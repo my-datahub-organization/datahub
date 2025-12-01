@@ -20,12 +20,10 @@ ENV DATAHUB_SYSTEM_CLIENT_ID=__datahub_system
 ENV METADATA_AUDIT_EVENT_NAME=MetadataAuditEvent_v4
 ENV METADATA_CHANGE_LOG_VERSIONED_TOPIC_NAME=MetadataChangeLog_Versioned_v1
 
-# Kafka SSL/SASL (Python kafka-python style)
+# Kafka SSL/SASL (only CA cert needed for SASL_SSL + PLAIN)
 ENV KAFKA_PROPERTIES_SECURITY_PROTOCOL=SASL_SSL
 ENV KAFKA_PROPERTIES_SASL_MECHANISM=PLAIN
 ENV KAFKA_PROPERTIES_SSL_CA_LOCATION=/etc/datahub/certs/kafka/ca.pem
-ENV KAFKA_PROPERTIES_SSL_CERTIFICATE_LOCATION=/etc/datahub/certs/kafka/service.cert
-ENV KAFKA_PROPERTIES_SSL_KEY_LOCATION=/etc/datahub/certs/kafka/service.key
 
 # Default command
 CMD ["datahub-actions", "actions", "run", "-c", "/etc/datahub/actions/system/conf/executor.yaml"]
@@ -35,5 +33,4 @@ CMD ["datahub-actions", "actions", "run", "-c", "/etc/datahub/actions/system/con
 # - KAFKA_BOOTSTRAP_SERVER
 # - KAFKA_PROPERTIES_SASL_USERNAME
 # - KAFKA_PROPERTIES_SASL_PASSWORD
-# - SCHEMA_REGISTRY_URL (defaults to http://${DATAHUB_GMS_HOST}:${DATAHUB_GMS_PORT}/schema-registry/api/)
-
+# - SCHEMA_REGISTRY_URL
