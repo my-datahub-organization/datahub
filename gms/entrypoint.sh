@@ -4,6 +4,9 @@
 
 set -e
 
+# Change to a writable directory - Ebean tries to write DDL files to ./
+cd /tmp
+
 echo "=== GMS Entrypoint Starting ==="
 echo "DATABASE_URL set: $([ -n "$DATABASE_URL" ] && echo 'yes' || echo 'NO')"
 echo "OPENSEARCH_URI set: $([ -n "$OPENSEARCH_URI" ] && echo 'yes' || echo 'NO')"
