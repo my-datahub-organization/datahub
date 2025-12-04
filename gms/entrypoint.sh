@@ -93,6 +93,10 @@ echo "=== Environment Variables ===" >&2
 env | grep -v PASSWORD | grep -v SECRET | sort >&2
 echo "=============================" >&2
 
+# Change to a writable directory for Ebean DDL files
+cd /tmp || cd /home/datahub || echo "Warning: Could not change to writable directory"
+echo "Working directory: $(pwd)" >&2
+
 # Execute the original entrypoint/command
 echo "Executing command: $@" >&2
 exec "$@"
