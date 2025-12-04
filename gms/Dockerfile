@@ -57,7 +57,8 @@ ENV PE_CONSUMER_ENABLED=true
 ENV UI_INGESTION_ENABLED=true
 
 # JVM Settings - reduced memory for container environments
-ENV JAVA_OPTS="-Xms256m -Xmx512m"
+# Include SSL truststore settings as JVM properties
+ENV JAVA_OPTS="-Xms256m -Xmx512m -Djavax.net.ssl.trustStore=/etc/ssl/certs/java/cacerts -Djavax.net.ssl.trustStorePassword=changeit"
 
 # Expose GMS port
 EXPOSE 8080
