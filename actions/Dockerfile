@@ -26,7 +26,7 @@ ENV METADATA_CHANGE_LOG_VERSIONED_TOPIC_NAME=MetadataChangeLog_Versioned_v1
 # Kafka SSL/SASL
 ENV KAFKA_PROPERTIES_SECURITY_PROTOCOL=SASL_SSL
 ENV KAFKA_PROPERTIES_SASL_MECHANISM=PLAIN
-ENV KAFKA_PROPERTIES_SSL_CA_LOCATION=/etc/datahub/certs/kafka/ca.pem
+# Use system CA certificates - no custom CA file needed
 
 # Use entrypoint to map env var names
 ENTRYPOINT ["/bin/bash", "/entrypoint.sh"]

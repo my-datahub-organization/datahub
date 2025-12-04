@@ -59,9 +59,10 @@ if [ -n "$KAFKA_SASL_USERNAME" ] && [ -n "$KAFKA_SASL_PASSWORD" ]; then
     echo "Kafka SASL configured for user: $KAFKA_SASL_USERNAME"
 fi
 
-# Set truststore password (use a default if not provided)
-if [ -z "$SPRING_KAFKA_PROPERTIES_SSL_TRUSTSTORE_PASSWORD" ]; then
-    export SPRING_KAFKA_PROPERTIES_SSL_TRUSTSTORE_PASSWORD="changeit"
+# Kafka SSL - use system CA store if no custom truststore
+if [ -z "$SPRING_KAFKA_PROPERTIES_SSL_TRUSTSTORE_LOCATION" ]; then
+    # Java will use system CA certs by default
+    echo "Using system CA certificates for Kafka SSL"
 fi
 
 # Debug: print configured endpoints (without secrets)
