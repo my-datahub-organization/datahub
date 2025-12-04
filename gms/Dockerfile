@@ -18,11 +18,12 @@ ENV SKIP_POSTGRES_CHECK=true
 
 # PostgreSQL Configuration
 ENV EBEAN_DATASOURCE_DRIVER=org.postgresql.Driver
+# Auto-create tables if they don't exist
 ENV EBEAN_AUTOCREATE=true
-# Don't generate DDL files - let ebean handle schema automatically
-ENV EBEAN_DDL_MODE=none
+# Create/update schema but don't write DDL files (permission issues)
+ENV EBEAN_DDL_MODE=create-only
 ENV EBEAN_DDL_GENERATE=false
-ENV EBEAN_DDL_RUN=false
+ENV EBEAN_DDL_RUN=true
 
 # Kafka Configuration
 ENV KAFKA_AUTO_CREATE_TOPICS_ENABLED=true
