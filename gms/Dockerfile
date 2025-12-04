@@ -42,6 +42,9 @@ ENV ELASTICSEARCH_USE_SSL=true
 ENV ELASTICSEARCH_IMPLEMENTATION=opensearch
 ENV ELASTICSEARCH_SSL_PROTOCOL=TLSv1.2
 
+# Entity Registry Configuration
+ENV ENTITY_REGISTRY_CONFIG_PATH=/datahub/datahub-gms/resources/entity-registry.yml
+
 # Service Configuration
 ENV GRAPH_SERVICE_IMPL=elasticsearch
 ENV MAE_CONSUMER_ENABLED=true

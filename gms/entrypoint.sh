@@ -2,23 +2,7 @@
 # Entrypoint script for DataHub GMS
 # Parses connection string environment variables into component variables
 
-# Immediately log to prove we're running
-echo "=== GMS ENTRYPOINT STARTING ===" >&2
-echo "Date: $(date)" >&2
-echo "Args: $@" >&2
-echo "Whoami: $(whoami)" >&2
-echo "PWD: $(pwd)" >&2
-
-# List the datahub directory structure for debugging
-echo "Listing /datahub/ structure:" >&2
-ls -la /datahub/ >&2 || echo "Cannot list /datahub/" >&2
-echo "Listing /datahub/datahub-gms/:" >&2
-ls -la /datahub/datahub-gms/ >&2 || echo "Cannot list /datahub/datahub-gms/" >&2
-echo "Listing /datahub/datahub-gms/scripts/:" >&2
-ls -la /datahub/datahub-gms/scripts/ >&2 || echo "Cannot list scripts" >&2
-
-# Don't exit on error - we want to see what fails
-# set -e
+set -e
 
 echo "=== GMS Entrypoint Starting ==="
 echo "DATABASE_URL set: $([ -n "$DATABASE_URL" ] && echo 'yes' || echo 'NO')"
@@ -88,15 +72,5 @@ echo "Kafka Bootstrap: ${KAFKA_BOOTSTRAP_SERVER:-NOT SET}"
 echo "OpenSearch Host: ${ELASTICSEARCH_HOST:-NOT SET}:${ELASTICSEARCH_PORT:-NOT SET}"
 echo "================================="
 
-# Print all env vars for debugging (hide passwords)
-echo "=== Environment Variables ===" >&2
-env | grep -v PASSWORD | grep -v SECRET | sort >&2
-echo "=============================" >&2
-
-# Change to a writable directory for Ebean DDL files
-cd /tmp || cd /home/datahub || echo "Warning: Could not change to writable directory"
-echo "Working directory: $(pwd)" >&2
-
 # Execute the original entrypoint/command
-echo "Executing command: $@" >&2
 exec "$@"
