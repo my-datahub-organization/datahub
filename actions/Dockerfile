@@ -10,7 +10,6 @@ RUN pip install psycopg2-binary==2.9.9
 
 # Copy entrypoint script that maps env var names
 COPY entrypoint.sh /entrypoint.sh
-RUN chmod +x /entrypoint.sh
 
 # GMS Connection
 ENV DATAHUB_GMS_HOST=host.docker.internal
@@ -30,5 +29,5 @@ ENV KAFKA_PROPERTIES_SASL_MECHANISM=PLAIN
 ENV KAFKA_PROPERTIES_SSL_CA_LOCATION=/etc/datahub/certs/kafka/ca.pem
 
 # Use entrypoint to map env var names
-ENTRYPOINT ["/entrypoint.sh"]
+ENTRYPOINT ["/bin/bash", "/entrypoint.sh"]
 CMD ["datahub-actions", "actions", "run", "-c", "/etc/datahub/actions/system/conf/executor.yaml"]

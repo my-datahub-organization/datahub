@@ -10,7 +10,6 @@ WORKDIR /tmp/ddl
 
 # Copy entrypoint script that parses connection string env vars
 COPY entrypoint.sh /entrypoint.sh
-RUN chmod +x /entrypoint.sh
 
 # Disable the base image's dependency wait (we handle startup order differently)
 ENV SKIP_ELASTICSEARCH_CHECK=true
@@ -54,5 +53,5 @@ ENV JAVA_OPTS="-Xms1g -Xmx1g"
 EXPOSE 8080
 
 # Use entrypoint to parse connection string env vars into component vars
-ENTRYPOINT ["/entrypoint.sh"]
+ENTRYPOINT ["/bin/bash", "/entrypoint.sh"]
 CMD ["/datahub/datahub-gms/bin/datahub-gms"]

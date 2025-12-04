@@ -7,7 +7,6 @@ FROM acryldata/datahub-frontend-react:${DATAHUB_VERSION}
 
 # Copy entrypoint script that parses connection string env vars
 COPY entrypoint.sh /entrypoint.sh
-RUN chmod +x /entrypoint.sh
 
 # GMS Connection
 ENV DATAHUB_GMS_HOST=host.docker.internal
@@ -34,5 +33,5 @@ ENV JAVA_OPTS="-Xms512m -Xmx512m -Dhttp.port=9002 -Dconfig.file=datahub-frontend
 EXPOSE 9002
 
 # Use entrypoint to parse connection string env vars into component vars
-ENTRYPOINT ["/entrypoint.sh"]
+ENTRYPOINT ["/bin/bash", "/entrypoint.sh"]
 CMD ["/datahub-frontend/bin/datahub-frontend"]
