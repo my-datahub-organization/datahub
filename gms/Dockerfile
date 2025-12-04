@@ -1,12 +1,23 @@
 # DataHub GMS (Metadata Service)
-# Build: docker build -t datahub-gms-aiven ./gms
-# Run: docker run -p 8093:8080 -v $(pwd)/certs:/etc/datahub/certs:ro -v $(pwd)/tmp/ddl:/tmp/ddl:rw --env-file .env datahub-gms-aiven
+# Build: docker build -t datahub-gms ./gms
+# Run: docker run -p 8080:8080 --env-file .env datahub-gms
 
 ARG DATAHUB_VERSION=head
 FROM acryldata/datahub-gms:${DATAHUB_VERSION}
 
 # Working directory for DDL file generation
 WORKDIR /tmp/ddl
+
+# Copy entrypoint script that parses connection string env vars
+COPY entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
+# Disable the base image's dependency wait (we handle startup order differently)
+ENV SKIP_ELASTICSEARCH_CHECK=true
+ENV SKIP_KAFKA_CHECK=true
+ENV SKIP_NEO4J_CHECK=true
+ENV SKIP_MYSQL_CHECK=true
+ENV SKIP_POSTGRES_CHECK=true
 
 # PostgreSQL Configuration
 ENV EBEAN_DATASOURCE_DRIVER=org.postgresql.Driver
@@ -18,7 +29,7 @@ ENV KAFKA_AUTO_CREATE_TOPICS_ENABLED=true
 ENV SCHEMA_REGISTRY_TYPE=INTERNAL
 ENV KAFKA_SCHEMAREGISTRY_URL=http://localhost:8080/schema-registry/api/
 
-# Kafka SSL/SASL (only truststore needed for SASL_SSL + PLAIN)
+# Kafka SSL/SASL
 ENV SPRING_KAFKA_PROPERTIES_SECURITY_PROTOCOL=SASL_SSL
 ENV SPRING_KAFKA_PROPERTIES_SASL_MECHANISM=PLAIN
 ENV SPRING_KAFKA_PROPERTIES_SSL_TRUSTSTORE_LOCATION=/etc/datahub/certs/truststore.jks
@@ -42,15 +53,6 @@ ENV JAVA_OPTS="-Xms1g -Xmx1g"
 # Expose GMS port
 EXPOSE 8080
 
-# Required environment variables (must be provided at runtime):
-# - EBEAN_DATASOURCE_USERNAME
-# - EBEAN_DATASOURCE_PASSWORD
-# - EBEAN_DATASOURCE_HOST (host:port format)
-# - EBEAN_DATASOURCE_URL (full JDBC URL)
-# - KAFKA_BOOTSTRAP_SERVER
-# - SPRING_KAFKA_PROPERTIES_SASL_JAAS_CONFIG (contains username/password)
-# - SPRING_KAFKA_PROPERTIES_SSL_TRUSTSTORE_PASSWORD
-# - ELASTICSEARCH_HOST
-# - ELASTICSEARCH_PORT
-# - ELASTICSEARCH_USERNAME
-# - ELASTICSEARCH_PASSWORD
+# Use entrypoint to parse connection string env vars into component vars
+ENTRYPOINT ["/entrypoint.sh"]
+CMD ["/datahub/datahub-gms/bin/datahub-gms"]
