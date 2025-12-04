@@ -4,6 +4,12 @@
 
 set -e
 
+echo "=== GMS Entrypoint Starting ==="
+echo "DATABASE_URL set: $([ -n "$DATABASE_URL" ] && echo 'yes' || echo 'NO')"
+echo "OPENSEARCH_URI set: $([ -n "$OPENSEARCH_URI" ] && echo 'yes' || echo 'NO')"
+echo "KAFKA_BOOTSTRAP_SERVER set: $([ -n "$KAFKA_BOOTSTRAP_SERVER" ] && echo 'yes' || echo 'NO')"
+echo "KAFKA_SASL_USERNAME set: $([ -n "$KAFKA_SASL_USERNAME" ] && echo 'yes' || echo 'NO')"
+
 # Parse DATABASE_URL (format: postgres://user:pass@host:port/dbname?sslmode=require)
 if [ -n "$DATABASE_URL" ]; then
     # Remove protocol prefix
