@@ -2,7 +2,14 @@
 # Entrypoint script for DataHub Actions
 # Maps environment variable names to expected format
 
-set -e
+# Immediately log to prove we're running
+echo "=== ACTIONS ENTRYPOINT STARTING ===" >&2
+echo "Date: $(date)" >&2
+echo "Args: $@" >&2
+echo "Whoami: $(whoami)" >&2
+
+# Don't exit on error initially
+# set -e
 
 # Parse DATAHUB_GMS_URL (format: https://uuid-8080.region.stg.rapu.app)
 # This is provided by the service credential integration from GMS
@@ -57,6 +64,12 @@ echo "Kafka Bootstrap: ${KAFKA_BOOTSTRAP_SERVER:-NOT SET}"
 echo "Schema Registry: ${SCHEMA_REGISTRY_URL:-NOT SET}"
 echo "======================================"
 
+# Print all env vars for debugging (hide passwords)
+echo "=== Environment Variables ===" >&2
+env | grep -v PASSWORD | grep -v SECRET | sort >&2
+echo "=============================" >&2
+
 # Execute the original entrypoint/command
+echo "Executing command: $@" >&2
 exec "$@"
 
