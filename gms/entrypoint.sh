@@ -9,16 +9,13 @@ echo "Args: $@" >&2
 echo "Whoami: $(whoami)" >&2
 echo "PWD: $(pwd)" >&2
 
-# Check if the command exists
-if [ -n "$1" ]; then
-    echo "Checking if command exists: $1" >&2
-    if [ -f "$1" ]; then
-        echo "Command file exists: $1" >&2
-    else
-        echo "WARNING: Command file does NOT exist: $1" >&2
-        ls -la /datahub/ >&2 || echo "Cannot list /datahub/" >&2
-    fi
-fi
+# List the datahub directory structure for debugging
+echo "Listing /datahub/ structure:" >&2
+ls -la /datahub/ >&2 || echo "Cannot list /datahub/" >&2
+echo "Listing /datahub/datahub-gms/:" >&2
+ls -la /datahub/datahub-gms/ >&2 || echo "Cannot list /datahub/datahub-gms/" >&2
+echo "Listing /datahub/datahub-gms/scripts/:" >&2
+ls -la /datahub/datahub-gms/scripts/ >&2 || echo "Cannot list scripts" >&2
 
 # Don't exit on error - we want to see what fails
 # set -e

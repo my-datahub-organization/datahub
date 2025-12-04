@@ -5,11 +5,9 @@
 ARG DATAHUB_VERSION=head
 FROM acryldata/datahub-gms:${DATAHUB_VERSION}
 
-# Working directory for DDL file generation
-WORKDIR /tmp/ddl
-
 # Copy entrypoint script that parses connection string env vars
-COPY entrypoint.sh /entrypoint.sh
+# and then calls the original startup
+COPY entrypoint.sh /aiven-entrypoint.sh
 
 # Disable the base image's dependency wait (we handle startup order differently)
 ENV SKIP_ELASTICSEARCH_CHECK=true
@@ -53,6 +51,7 @@ ENV JAVA_OPTS="-Xms256m -Xmx512m"
 # Expose GMS port
 EXPOSE 8080
 
-# Use entrypoint to parse connection string env vars into component vars
-ENTRYPOINT ["/bin/bash", "/entrypoint.sh"]
-CMD ["/datahub/datahub-gms/bin/datahub-gms"]
+# Use our entrypoint to parse env vars, then delegate to original startup
+# The base image uses /datahub/datahub-gms/scripts/start.sh
+ENTRYPOINT ["/bin/bash", "/aiven-entrypoint.sh"]
+CMD ["/bin/bash", "-c", "exec /datahub/datahub-gms/scripts/start.sh"]
