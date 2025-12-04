@@ -47,8 +47,8 @@ ENV MCE_CONSUMER_ENABLED=true
 ENV PE_CONSUMER_ENABLED=true
 ENV UI_INGESTION_ENABLED=true
 
-# JVM Settings
-ENV JAVA_OPTS="-Xms1g -Xmx1g"
+# JVM Settings - reduced memory for container environments
+ENV JAVA_OPTS="-Xms256m -Xmx512m"
 
 # Expose GMS port
 EXPOSE 8080
