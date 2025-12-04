@@ -26,7 +26,8 @@ ENV METADATA_CHANGE_LOG_VERSIONED_TOPIC_NAME=MetadataChangeLog_Versioned_v1
 # Kafka SSL/SASL
 ENV KAFKA_PROPERTIES_SECURITY_PROTOCOL=SASL_SSL
 ENV KAFKA_PROPERTIES_SASL_MECHANISM=PLAIN
-# Use system CA certificates - no custom CA file needed
+# Use system CA certificates for Python Kafka client
+ENV KAFKA_PROPERTIES_SSL_CA_LOCATION=/etc/ssl/certs/ca-certificates.crt
 
 # Use entrypoint to map env var names
 ENTRYPOINT ["/bin/bash", "/entrypoint.sh"]

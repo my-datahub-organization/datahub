@@ -2,14 +2,9 @@
 # Entrypoint script for DataHub Actions
 # Maps environment variable names to expected format
 
-# Immediately log to prove we're running
-echo "=== ACTIONS ENTRYPOINT STARTING ===" >&2
-echo "Date: $(date)" >&2
-echo "Args: $@" >&2
-echo "Whoami: $(whoami)" >&2
+set -e
 
-# Don't exit on error initially
-# set -e
+echo "=== DataHub Actions Entrypoint Starting ==="
 
 # Parse DATAHUB_GMS_URL (format: https://uuid-8080.region.stg.rapu.app)
 # This is provided by the service credential integration from GMS
@@ -58,18 +53,10 @@ if [ -z "$DATAHUB_SYSTEM_CLIENT_SECRET" ]; then
 fi
 
 # Debug: print configured endpoints (without secrets)
-echo "=== DataHub Actions Configuration ==="
-echo "GMS Host: ${DATAHUB_GMS_HOST:-NOT SET}:${DATAHUB_GMS_PORT:-NOT SET}"
-echo "Kafka Bootstrap: ${KAFKA_BOOTSTRAP_SERVER:-NOT SET}"
+echo "GMS: ${DATAHUB_GMS_HOST:-NOT SET}:${DATAHUB_GMS_PORT:-NOT SET}"
+echo "Kafka: ${KAFKA_BOOTSTRAP_SERVER:-NOT SET}"
 echo "Schema Registry: ${SCHEMA_REGISTRY_URL:-NOT SET}"
-echo "======================================"
 
-# Print all env vars for debugging (hide passwords)
-echo "=== Environment Variables ===" >&2
-env | grep -v PASSWORD | grep -v SECRET | sort >&2
-echo "=============================" >&2
-
-# Execute the original entrypoint/command
-echo "Executing command: $@" >&2
+# Execute the original command
 exec "$@"
 
