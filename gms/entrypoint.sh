@@ -9,6 +9,13 @@ cd /tmp
 
 echo "=== GMS Entrypoint Starting ==="
 
+# Debug: show what env vars we received from integrations
+echo "DEBUG: Environment variables from integrations:"
+echo "  DATABASE_URL set: $([ -n "$DATABASE_URL" ] && echo 'YES' || echo 'NO')"
+echo "  OPENSEARCH_URI set: $([ -n "$OPENSEARCH_URI" ] && echo 'YES' || echo 'NO')"
+echo "  KAFKA_BOOTSTRAP_SERVER set: $([ -n "$KAFKA_BOOTSTRAP_SERVER" ] && echo 'YES' || echo 'NO')"
+echo "  KAFKA_SASL_USERNAME set: $([ -n "$KAFKA_SASL_USERNAME" ] && echo 'YES' || echo 'NO')"
+
 # Function to wait for DNS resolution of a host
 # Default: 40 attempts * 30 seconds = 20 minutes max wait
 wait_for_dns() {
@@ -81,71 +88,29 @@ if [ -n "$ELASTICSEARCH_HOST" ]; then
 fi
 
 # Wait for Kafka
+echo "DEBUG: KAFKA_BOOTSTRAP_SERVER='$KAFKA_BOOTSTRAP_SERVER'"
 if [ -n "$KAFKA_BOOTSTRAP_SERVER" ]; then
     KAFKA_HOST="${KAFKA_BOOTSTRAP_SERVER%%:*}"
+    echo "DEBUG: Extracted KAFKA_HOST='$KAFKA_HOST'"
     wait_for_dns "$KAFKA_HOST" || echo "Continuing anyway..."
+else
+    echo "DEBUG: KAFKA_BOOTSTRAP_SERVER is not set!"
 fi
 
 echo "=== All dependencies ready ==="
 
-# Setup Kafka SSL - download and trust the server certificate
+# Kafka SSL configuration - use default Java truststore with public CAs
+# SASL authentication is configured via JAAS config above
 if [ -n "$KAFKA_BOOTSTRAP_SERVER" ]; then
-    KAFKA_PORT="${KAFKA_BOOTSTRAP_SERVER#*:}"
-    TRUSTSTORE="/tmp/kafka-truststore.jks"
-    TRUSTSTORE_PASS="changeit"
+    echo "Kafka configured: $KAFKA_BOOTSTRAP_SERVER (SASL_SSL with PLAIN)"
     
-    echo "Fetching Kafka SSL certificate from $KAFKA_HOST:$KAFKA_PORT..."
-    
-    # Download server certificate (retry for up to 20 minutes as Kafka may still be starting)
-    CERT_ATTEMPTS=0
-    MAX_CERT_ATTEMPTS=40
-    while [ $CERT_ATTEMPTS -lt $MAX_CERT_ATTEMPTS ]; do
-        # First test if we can reach the port at all
-        if ! timeout 5 bash -c "echo > /dev/tcp/$KAFKA_HOST/$KAFKA_PORT" 2>/dev/null; then
-            echo "Cannot connect to $KAFKA_HOST:$KAFKA_PORT yet..."
-        else
-            echo "TCP connection to $KAFKA_HOST:$KAFKA_PORT successful, fetching certificate..."
-            # Fetch the certificate - use timeout and capture any errors
-            CERT_OUTPUT=$(echo | timeout 10 openssl s_client -connect "$KAFKA_HOST:$KAFKA_PORT" -servername "$KAFKA_HOST" 2>&1)
-            echo "$CERT_OUTPUT" | openssl x509 -outform PEM > /tmp/kafka-cert.pem 2>/dev/null || true
-            
-            if [ -s /tmp/kafka-cert.pem ]; then
-                echo "Kafka SSL certificate fetched successfully after $((CERT_ATTEMPTS * 30)) seconds"
-                break
-            else
-                echo "Certificate extraction failed. OpenSSL output:"
-                echo "$CERT_OUTPUT" | head -20
-            fi
-        fi
-        
-        CERT_ATTEMPTS=$((CERT_ATTEMPTS + 1))
-        if [ $((CERT_ATTEMPTS % 2)) -eq 0 ]; then
-            echo "Waiting for Kafka SSL endpoint... ($((CERT_ATTEMPTS * 30 / 60)) minutes elapsed)"
-        fi
-        sleep 30
-    done
-    
-    if [ -s /tmp/kafka-cert.pem ]; then
-        # Create truststore with the server cert
-        rm -f "$TRUSTSTORE"
-        keytool -import -trustcacerts -alias kafka-server -file /tmp/kafka-cert.pem \
-            -keystore "$TRUSTSTORE" -storepass "$TRUSTSTORE_PASS" -noprompt 2>/dev/null
-        rm -f /tmp/kafka-cert.pem
-        
-        # Configure Kafka to use this truststore
-        export SPRING_KAFKA_PROPERTIES_SSL_TRUSTSTORE_LOCATION="$TRUSTSTORE"
-        export SPRING_KAFKA_PROPERTIES_SSL_TRUSTSTORE_PASSWORD="$TRUSTSTORE_PASS"
-        export SPRING_KAFKA_PROPERTIES_SSL_TRUSTSTORE_TYPE="JKS"
-        
-        # Update JAVA_OPTS
-        export JAVA_OPTS="${JAVA_OPTS} -Djavax.net.ssl.trustStore=$TRUSTSTORE -Djavax.net.ssl.trustStorePassword=$TRUSTSTORE_PASS"
-        
-        echo "Kafka SSL truststore created with server certificate"
-    else
-        echo "WARNING: Could not fetch Kafka certificate after $((MAX_CERT_ATTEMPTS * 30 / 60)) minutes, SSL may fail"
-    fi
+    # Use Java's default cacerts (contains public CAs like Let's Encrypt)
+    export SPRING_KAFKA_PROPERTIES_SSL_TRUSTSTORE_LOCATION="/etc/ssl/certs/java/cacerts"
+    export SPRING_KAFKA_PROPERTIES_SSL_TRUSTSTORE_PASSWORD="changeit"
+    export SPRING_KAFKA_PROPERTIES_SSL_TRUSTSTORE_TYPE="JKS"
 fi
 
+# Disable hostname verification (managed service certs may use internal names)
 export SPRING_KAFKA_PROPERTIES_SSL_ENDPOINT_IDENTIFICATION_ALGORITHM=""
 
 echo "=== Configuration Complete ==="
