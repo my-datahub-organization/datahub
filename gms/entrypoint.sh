@@ -9,6 +9,41 @@ cd /tmp
 
 echo "=== GMS Entrypoint Starting ==="
 
+# Check for all required environment variables
+# These are populated by service integrations - if not set, the data services aren't ready
+check_required_env_vars() {
+    local missing=""
+    
+    [ -z "$DATABASE_URL" ] && missing="$missing DATABASE_URL"
+    [ -z "$OPENSEARCH_URI" ] && missing="$missing OPENSEARCH_URI"
+    [ -z "$KAFKA_BOOTSTRAP_SERVER" ] && missing="$missing KAFKA_BOOTSTRAP_SERVER"
+    [ -z "$KAFKA_SASL_USERNAME" ] && missing="$missing KAFKA_SASL_USERNAME"
+    [ -z "$KAFKA_SASL_PASSWORD" ] && missing="$missing KAFKA_SASL_PASSWORD"
+    
+    if [ -n "$missing" ]; then
+        echo "=============================================="
+        echo "ERROR: Required environment variables missing:"
+        echo " $missing"
+        echo "=============================================="
+        echo ""
+        echo "The data services (PostgreSQL, Kafka, OpenSearch) may still be starting."
+        echo "Their service_uri is not yet available for the credential integration."
+        echo ""
+        echo "Sleeping for 60 seconds before exiting..."
+        echo "The container will restart and re-resolve environment variables."
+        sleep 60
+        return 1
+    fi
+    
+    echo "All required environment variables are set!"
+    return 0
+}
+
+# Check environment variables - exit if missing (container will restart)
+if ! check_required_env_vars; then
+    exit 1
+fi
+
 # Debug: show what env vars we received from integrations
 echo "DEBUG: Environment variables from integrations:"
 echo "  DATABASE_URL set: $([ -n "$DATABASE_URL" ] && echo 'YES' || echo 'NO')"
@@ -92,17 +127,31 @@ if [ -n "$KAFKA_SASL_USERNAME" ] && [ -n "$KAFKA_SASL_PASSWORD" ]; then
 fi
 
 # Wait for all dependencies to be DNS-resolvable before proceeding
-echo "=== Waiting for dependencies ==="
+echo "=== Waiting for dependencies (all must resolve) ==="
 
-# Wait for PostgreSQL (don't fail if it times out - let the app handle it)
+DNS_FAILED=0
+
+# Wait for PostgreSQL
 if [ -n "$EBEAN_DATASOURCE_HOST" ]; then
     PG_HOST="${EBEAN_DATASOURCE_HOST%%:*}"
-    wait_for_dns "$PG_HOST" || echo "Continuing anyway..."
+    if ! wait_for_dns "$PG_HOST"; then
+        echo "ERROR: PostgreSQL DNS resolution failed!"
+        DNS_FAILED=1
+    fi
+else
+    echo "ERROR: PostgreSQL host not configured!"
+    DNS_FAILED=1
 fi
 
 # Wait for OpenSearch
 if [ -n "$ELASTICSEARCH_HOST" ]; then
-    wait_for_dns "$ELASTICSEARCH_HOST" || echo "Continuing anyway..."
+    if ! wait_for_dns "$ELASTICSEARCH_HOST"; then
+        echo "ERROR: OpenSearch DNS resolution failed!"
+        DNS_FAILED=1
+    fi
+else
+    echo "ERROR: OpenSearch host not configured!"
+    DNS_FAILED=1
 fi
 
 # Wait for Kafka
@@ -110,9 +159,24 @@ echo "DEBUG: KAFKA_BOOTSTRAP_SERVER='$KAFKA_BOOTSTRAP_SERVER'"
 if [ -n "$KAFKA_BOOTSTRAP_SERVER" ]; then
     KAFKA_HOST="${KAFKA_BOOTSTRAP_SERVER%%:*}"
     echo "DEBUG: Extracted KAFKA_HOST='$KAFKA_HOST'"
-    wait_for_dns "$KAFKA_HOST" || echo "Continuing anyway..."
+    if ! wait_for_dns "$KAFKA_HOST"; then
+        echo "ERROR: Kafka DNS resolution failed!"
+        DNS_FAILED=1
+    fi
 else
-    echo "DEBUG: KAFKA_BOOTSTRAP_SERVER is not set!"
+    echo "ERROR: Kafka host not configured!"
+    DNS_FAILED=1
+fi
+
+# Exit if any DNS resolution failed
+if [ $DNS_FAILED -eq 1 ]; then
+    echo "=============================================="
+    echo "ERROR: One or more required services are not reachable!"
+    echo "=============================================="
+    echo "Sleeping for 60 seconds before exiting..."
+    echo "The container will restart and retry."
+    sleep 60
+    exit 1
 fi
 
 echo "=== All dependencies ready ==="
@@ -132,45 +196,58 @@ if [ -n "$KAFKA_BOOTSTRAP_SERVER" ]; then
     which keytool && echo "  keytool: found" || echo "  keytool: NOT FOUND"
     which timeout && echo "  timeout: found" || echo "  timeout: NOT FOUND"
     
-    # Fetch the CA certificate chain from the Kafka server
-    echo "Fetching CA certificate from $KAFKA_HOST:$KAFKA_PORT..."
+    # Fetch the full certificate chain from the Kafka server
+    echo "Fetching certificate chain from $KAFKA_HOST:$KAFKA_PORT..."
     
-    # Try to fetch certificate with full error output
+    # Get the full certificate chain with -showcerts
     echo "DEBUG: Running openssl s_client..."
-    if echo | openssl s_client -connect "$KAFKA_HOST:$KAFKA_PORT" -servername "$KAFKA_HOST" -showcerts </dev/null 2>&1 | tee /tmp/openssl-output.txt | sed -n '/-----BEGIN CERTIFICATE-----/,/-----END CERTIFICATE-----/p' > /tmp/kafka-ca.pem; then
-        echo "DEBUG: openssl command completed"
-        echo "DEBUG: Certificate file size: $(wc -c < /tmp/kafka-ca.pem) bytes"
+    echo | openssl s_client -connect "$KAFKA_HOST:$KAFKA_PORT" -servername "$KAFKA_HOST" -showcerts </dev/null 2>&1 > /tmp/openssl-output.txt
+    
+    # Extract all certificates from the chain into separate files
+    awk '/-----BEGIN CERTIFICATE-----/,/-----END CERTIFICATE-----/' /tmp/openssl-output.txt > /tmp/kafka-all-certs.pem
+    
+    if [ -s /tmp/kafka-all-certs.pem ]; then
+        echo "DEBUG: Certificate chain fetched, size: $(wc -c < /tmp/kafka-all-certs.pem) bytes"
         
-        if [ -s /tmp/kafka-ca.pem ]; then
-            echo "CA certificate fetched successfully"
-            cat /tmp/kafka-ca.pem | head -5
-            
-            # Create a new truststore with the CA certificate
-            rm -f "$TRUSTSTORE_PATH"
-            echo "DEBUG: Creating truststore..."
-            keytool -import -trustcacerts \
-                -keystore "$TRUSTSTORE_PATH" \
-                -storepass "$TRUSTSTORE_PASS" \
-                -noprompt \
-                -alias kafka-ca \
-                -file /tmp/kafka-ca.pem 2>&1
-            
-            if [ -f "$TRUSTSTORE_PATH" ]; then
-                echo "Truststore created at $TRUSTSTORE_PATH"
-                ls -la "$TRUSTSTORE_PATH"
-                # Update Kafka SSL configuration to use our truststore
-                export SPRING_KAFKA_PROPERTIES_SSL_TRUSTSTORE_LOCATION="$TRUSTSTORE_PATH"
-                export SPRING_KAFKA_PROPERTIES_SSL_TRUSTSTORE_PASSWORD="$TRUSTSTORE_PASS"
-            else
-                echo "WARNING: Failed to create truststore"
+        # Count certificates in the chain
+        CERT_COUNT=$(grep -c "BEGIN CERTIFICATE" /tmp/kafka-all-certs.pem || echo "0")
+        echo "DEBUG: Found $CERT_COUNT certificate(s) in the chain"
+        
+        # Create truststore
+        rm -f "$TRUSTSTORE_PATH"
+        
+        # Import each certificate from the chain
+        # We use awk to split certificates and import each one
+        ALIAS_NUM=0
+        awk '/-----BEGIN CERTIFICATE-----/{f=1; n++} f{print > "/tmp/cert-"n".pem"} /-----END CERTIFICATE-----/{f=0}' /tmp/kafka-all-certs.pem
+        
+        for CERT_FILE in /tmp/cert-*.pem; do
+            if [ -f "$CERT_FILE" ] && [ -s "$CERT_FILE" ]; then
+                ALIAS_NUM=$((ALIAS_NUM + 1))
+                echo "DEBUG: Importing certificate $ALIAS_NUM from $CERT_FILE"
+                keytool -import -trustcacerts \
+                    -keystore "$TRUSTSTORE_PATH" \
+                    -storepass "$TRUSTSTORE_PASS" \
+                    -noprompt \
+                    -alias "kafka-cert-$ALIAS_NUM" \
+                    -file "$CERT_FILE" 2>&1 || echo "  (may be duplicate)"
+                rm -f "$CERT_FILE"
             fi
+        done
+        
+        if [ -f "$TRUSTSTORE_PATH" ]; then
+            echo "Truststore created at $TRUSTSTORE_PATH with $ALIAS_NUM certificate(s)"
+            ls -la "$TRUSTSTORE_PATH"
+            echo "DEBUG: Truststore contents:"
+            keytool -list -keystore "$TRUSTSTORE_PATH" -storepass "$TRUSTSTORE_PASS" 2>&1 | head -15
+            # Update Kafka SSL configuration to use our truststore
+            export SPRING_KAFKA_PROPERTIES_SSL_TRUSTSTORE_LOCATION="$TRUSTSTORE_PATH"
+            export SPRING_KAFKA_PROPERTIES_SSL_TRUSTSTORE_PASSWORD="$TRUSTSTORE_PASS"
         else
-            echo "WARNING: CA certificate file is empty"
-            echo "DEBUG: openssl output was:"
-            cat /tmp/openssl-output.txt | head -50
+            echo "WARNING: Failed to create truststore"
         fi
     else
-        echo "WARNING: Could not fetch CA certificate from Kafka (openssl failed)"
+        echo "WARNING: Could not fetch certificates from Kafka"
         echo "DEBUG: openssl output was:"
         cat /tmp/openssl-output.txt 2>/dev/null | head -50 || echo "(no output captured)"
     fi
