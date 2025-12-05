@@ -23,9 +23,11 @@ ENV DATAHUB_SYSTEM_CLIENT_ID=__datahub_system
 ENV METADATA_AUDIT_EVENT_NAME=MetadataAuditEvent_v4
 ENV METADATA_CHANGE_LOG_VERSIONED_TOPIC_NAME=MetadataChangeLog_Versioned_v1
 
-# Kafka SASL (no SSL - credentials only)
-ENV KAFKA_PROPERTIES_SECURITY_PROTOCOL=SASL_PLAINTEXT
+# Kafka SASL with SSL (required by Aiven Kafka)
+ENV KAFKA_PROPERTIES_SECURITY_PROTOCOL=SASL_SSL
 ENV KAFKA_PROPERTIES_SASL_MECHANISM=PLAIN
+# Disable SSL certificate verification (Aiven uses self-signed CA)
+ENV KAFKA_PROPERTIES_ENABLE_SSL_CERTIFICATE_VERIFICATION=false
 
 # Use entrypoint to map env var names
 ENTRYPOINT ["/bin/bash", "/entrypoint.sh"]
