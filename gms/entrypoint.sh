@@ -99,50 +99,10 @@ fi
 
 echo "=== All dependencies ready ==="
 
-# Kafka SSL configuration - fetch server cert and create truststore
+# Kafka configuration (SASL_PLAINTEXT - no SSL)
 if [ -n "$KAFKA_BOOTSTRAP_SERVER" ]; then
-    KAFKA_HOST="${KAFKA_BOOTSTRAP_SERVER%%:*}"
-    KAFKA_PORT="${KAFKA_BOOTSTRAP_SERVER#*:}"
-    TRUSTSTORE="/tmp/kafka-truststore.jks"
-    TRUSTSTORE_PASS="changeit"
-    
-    echo "=== Kafka SSL Setup ==="
-    echo "Fetching certificate from $KAFKA_HOST:$KAFKA_PORT..."
-    
-    # Fetch server certificate (show errors for debugging)
-    timeout 10 openssl s_client -connect "$KAFKA_HOST:$KAFKA_PORT" -servername "$KAFKA_HOST" </dev/null 2>&1 \
-        | sed -n '/-----BEGIN CERTIFICATE-----/,/-----END CERTIFICATE-----/p' > /tmp/kafka.pem
-    
-    echo "Certificate file size: $(wc -c < /tmp/kafka.pem) bytes"
-    
-    if [ -s /tmp/kafka.pem ]; then
-        echo "Certificate fetched, creating truststore..."
-        keytool -import -trustcacerts -alias kafka -file /tmp/kafka.pem \
-            -keystore "$TRUSTSTORE" -storepass "$TRUSTSTORE_PASS" -noprompt 2>&1 || echo "keytool failed"
-        rm -f /tmp/kafka.pem
-        
-        if [ -f "$TRUSTSTORE" ]; then
-            export SPRING_KAFKA_PROPERTIES_SSL_TRUSTSTORE_LOCATION="$TRUSTSTORE"
-            export SPRING_KAFKA_PROPERTIES_SSL_TRUSTSTORE_PASSWORD="$TRUSTSTORE_PASS"
-            export SPRING_KAFKA_PROPERTIES_SSL_TRUSTSTORE_TYPE="JKS"
-            echo "SUCCESS: Truststore created at $TRUSTSTORE"
-        else
-            echo "ERROR: Truststore not created"
-        fi
-    else
-        echo "ERROR: Could not fetch Kafka certificate"
-        echo "Falling back to system cacerts"
-        export SPRING_KAFKA_PROPERTIES_SSL_TRUSTSTORE_LOCATION="/etc/ssl/certs/java/cacerts"
-        export SPRING_KAFKA_PROPERTIES_SSL_TRUSTSTORE_PASSWORD="changeit"
-        export SPRING_KAFKA_PROPERTIES_SSL_TRUSTSTORE_TYPE="JKS"
-    fi
-    
-    echo "Kafka configured: $KAFKA_BOOTSTRAP_SERVER"
-    echo "Truststore: $SPRING_KAFKA_PROPERTIES_SSL_TRUSTSTORE_LOCATION"
+    echo "Kafka: $KAFKA_BOOTSTRAP_SERVER (SASL_PLAINTEXT)"
 fi
-
-# Disable hostname verification
-export SPRING_KAFKA_PROPERTIES_SSL_ENDPOINT_IDENTIFICATION_ALGORITHM=""
 
 echo "=== Configuration Complete ==="
 
