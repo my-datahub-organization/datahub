@@ -113,6 +113,13 @@ if [ -n "$KAFKA_SASL_PASSWORD" ]; then
     export KAFKA_PROPERTIES_SASL_PASSWORD="$KAFKA_SASL_PASSWORD"
 fi
 
+# Kafka SSL configuration for librdkafka (Python client)
+# Disable certificate verification for simplicity
+if [ -n "$KAFKA_BOOTSTRAP_SERVER" ]; then
+    export KAFKA_PROPERTIES_ENABLE_SSL_CERTIFICATE_VERIFICATION="false"
+    echo "Kafka SSL: certificate verification disabled"
+fi
+
 # Generate system client secret if not provided (used for GMS authentication)
 if [ -z "$DATAHUB_SYSTEM_CLIENT_SECRET" ]; then
     export DATAHUB_SYSTEM_CLIENT_SECRET="${DATAHUB_SECRET:-$(openssl rand -hex 32)}"
