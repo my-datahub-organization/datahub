@@ -6,6 +6,13 @@ set -e
 
 echo "=== DataHub Actions Entrypoint Starting ==="
 
+# Debug: show what env vars we received
+echo "DEBUG: Environment variables:"
+echo "  DATAHUB_GMS_URL: ${DATAHUB_GMS_URL:-NOT SET}"
+echo "  GMS_SERVICE_NAME: ${GMS_SERVICE_NAME:-NOT SET}"
+echo "  KAFKA_BOOTSTRAP_SERVER: ${KAFKA_BOOTSTRAP_SERVER:-NOT SET}"
+echo "  KAFKA_SASL_USERNAME: ${KAFKA_SASL_USERNAME:+SET}"
+
 # Function to wait for DNS resolution of a host
 # Default: 40 attempts * 30 seconds = 20 minutes max wait
 wait_for_dns() {
