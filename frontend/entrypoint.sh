@@ -6,9 +6,19 @@ set -e
 
 echo "=== DataHub Frontend Entrypoint Starting ==="
 
+# Debug: show all DATAHUB_* environment variables
+echo "=== Environment Variables Debug ==="
+echo "DATAHUB_GMS_URL='$DATAHUB_GMS_URL'"
+echo "DATAHUB_GMS_HOST='$DATAHUB_GMS_HOST'"
+echo "DATAHUB_GMS_PORT='$DATAHUB_GMS_PORT'"
+echo "DATAHUB_SECRET is set: $([ -n "$DATAHUB_SECRET" ] && echo 'YES' || echo 'NO')"
+echo "KAFKA_BOOTSTRAP_SERVER='$KAFKA_BOOTSTRAP_SERVER'"
+echo "OPENSEARCH_URI is set: $([ -n "$OPENSEARCH_URI" ] && echo 'YES' || echo 'NO')"
+echo "==================================="
+
 # Require DATAHUB_GMS_URL - must be set manually
 if [ -z "$DATAHUB_GMS_URL" ]; then
-    echo "ERROR: DATAHUB_GMS_URL is required but not set"
+    echo "ERROR: DATAHUB_GMS_URL is required but not set (value is empty or unset)"
     echo "Please set DATAHUB_GMS_URL to the GMS service URL (e.g., http://gms-host:8080)"
     exit 1
 fi
