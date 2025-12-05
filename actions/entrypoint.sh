@@ -6,12 +6,15 @@ set -e
 
 echo "=== DataHub Actions Entrypoint Starting ==="
 
-# Debug: show what env vars we received
-echo "DEBUG: Environment variables:"
-echo "  DATAHUB_GMS_URL: ${DATAHUB_GMS_URL:-NOT SET}"
-echo "  GMS_SERVICE_NAME: ${GMS_SERVICE_NAME:-NOT SET}"
-echo "  KAFKA_BOOTSTRAP_SERVER: ${KAFKA_BOOTSTRAP_SERVER:-NOT SET}"
-echo "  KAFKA_SASL_USERNAME: ${KAFKA_SASL_USERNAME:+SET}"
+# Require DATAHUB_GMS_URL - must be set manually
+if [ -z "$DATAHUB_GMS_URL" ]; then
+    echo "ERROR: DATAHUB_GMS_URL is required but not set"
+    echo "Please set DATAHUB_GMS_URL to the GMS service URL (e.g., http://gms-host:8080)"
+    exit 1
+fi
+
+echo "DATAHUB_GMS_URL: $DATAHUB_GMS_URL"
+echo "KAFKA_BOOTSTRAP_SERVER: ${KAFKA_BOOTSTRAP_SERVER:-NOT SET}"
 
 # Function to wait for DNS resolution of a host
 # Default: 40 attempts * 30 seconds = 20 minutes max wait
@@ -60,56 +63,26 @@ wait_for_gms() {
     return 1
 }
 
-# Parse DATAHUB_GMS_URL (format: https://uuid-8080.region.stg.rapu.app)
-# This is provided by the service credential integration from GMS
-if [ -n "$DATAHUB_GMS_URL" ]; then
-    # Extract protocol
-    GMS_PROTO="${DATAHUB_GMS_URL%%://*}"
-    # Remove protocol prefix
-    GMS_URL_NO_PROTO="${DATAHUB_GMS_URL#*://}"
-    # Remove any path
-    GMS_HOSTPORT="${GMS_URL_NO_PROTO%%/*}"
-    
-    # Extract host and port (handle case with and without explicit port)
-    if [[ "$GMS_HOSTPORT" == *":"* ]]; then
-        export DATAHUB_GMS_HOST="${GMS_HOSTPORT%%:*}"
-        export DATAHUB_GMS_PORT="${GMS_HOSTPORT#*:}"
+# Parse DATAHUB_GMS_URL (format: http://host:port or https://host:port)
+GMS_PROTO="${DATAHUB_GMS_URL%%://*}"
+GMS_URL_NO_PROTO="${DATAHUB_GMS_URL#*://}"
+GMS_HOSTPORT="${GMS_URL_NO_PROTO%%/*}"
+
+if [[ "$GMS_HOSTPORT" == *":"* ]]; then
+    export DATAHUB_GMS_HOST="${GMS_HOSTPORT%%:*}"
+    export DATAHUB_GMS_PORT="${GMS_HOSTPORT#*:}"
+else
+    export DATAHUB_GMS_HOST="$GMS_HOSTPORT"
+    if [ "$GMS_PROTO" = "https" ]; then
+        export DATAHUB_GMS_PORT="443"
     else
-        export DATAHUB_GMS_HOST="$GMS_HOSTPORT"
-        # Default port based on protocol
-        if [ "$GMS_PROTO" = "https" ]; then
-            export DATAHUB_GMS_PORT="443"
-        else
-            export DATAHUB_GMS_PORT="80"
-        fi
-    fi
-    export DATAHUB_GMS_PROTOCOL="$GMS_PROTO"
-    
-    # Also set SCHEMA_REGISTRY_URL based on GMS URL
-    export SCHEMA_REGISTRY_URL="${DATAHUB_GMS_URL}/schema-registry/api/"
-    
-    echo "GMS configured from URL: protocol=$DATAHUB_GMS_PROTOCOL, host=$DATAHUB_GMS_HOST, port=$DATAHUB_GMS_PORT"
-elif [ -n "$GMS_SERVICE_NAME" ]; then
-    # Fallback: try to reach GMS using internal service name
-    echo "DATAHUB_GMS_URL not set, trying to discover GMS via service name: $GMS_SERVICE_NAME"
-    
-    # Try internal service name with port 8080 (GMS default)
-    for gms_candidate in "${GMS_SERVICE_NAME}:8080" "${GMS_SERVICE_NAME}.default.svc.cluster.local:8080"; do
-        echo "Trying GMS at $gms_candidate..."
-        if curl -sf --max-time 5 "http://${gms_candidate}/config" > /dev/null 2>&1; then
-            export DATAHUB_GMS_HOST="${gms_candidate%%:*}"
-            export DATAHUB_GMS_PORT="${gms_candidate#*:}"
-            export DATAHUB_GMS_PROTOCOL="http"
-            export SCHEMA_REGISTRY_URL="http://${gms_candidate}/schema-registry/api/"
-            echo "GMS discovered at $gms_candidate"
-            break
-        fi
-    done
-    
-    if [ -z "$DATAHUB_GMS_HOST" ]; then
-        echo "WARNING: Could not discover GMS, using defaults"
+        export DATAHUB_GMS_PORT="80"
     fi
 fi
+export DATAHUB_GMS_PROTOCOL="$GMS_PROTO"
+export SCHEMA_REGISTRY_URL="${DATAHUB_GMS_URL}/schema-registry/api/"
+
+echo "GMS: $DATAHUB_GMS_PROTOCOL://$DATAHUB_GMS_HOST:$DATAHUB_GMS_PORT"
 
 # Actions uses KAFKA_PROPERTIES_SASL_USERNAME/PASSWORD directly
 # Map from generic names
@@ -134,11 +107,8 @@ fi
 # Wait for all dependencies to be DNS-resolvable before proceeding
 echo "=== Waiting for dependencies ==="
 
-# Wait for GMS to be ready (not just DNS, but actual HTTP response)
-if [ -n "$DATAHUB_GMS_HOST" ] && [ "$DATAHUB_GMS_HOST" != "host.docker.internal" ]; then
-    GMS_URL="${DATAHUB_GMS_PROTOCOL:-http}://${DATAHUB_GMS_HOST}:${DATAHUB_GMS_PORT:-8080}"
-    wait_for_gms "$GMS_URL" || echo "Continuing anyway..."
-fi
+# Wait for GMS to be ready
+wait_for_gms "$DATAHUB_GMS_URL" || echo "Continuing anyway..."
 
 # Wait for Kafka
 if [ -n "$KAFKA_BOOTSTRAP_SERVER" ]; then
