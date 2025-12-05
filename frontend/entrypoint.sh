@@ -30,6 +30,29 @@ wait_for_dns() {
     return 1
 }
 
+# Function to wait for GMS to be ready (HTTP endpoint responding)
+wait_for_gms() {
+    local gms_url="$1"
+    local max_attempts="${2:-40}"
+    local attempt=1
+    
+    echo "Waiting for GMS at $gms_url (max wait: $((max_attempts * 30 / 60)) minutes)..."
+    while [ $attempt -le $max_attempts ]; do
+        if curl -sf --max-time 5 "${gms_url}/config" > /dev/null 2>&1; then
+            echo "GMS is ready at $gms_url"
+            return 0
+        fi
+        if [ $((attempt % 2)) -eq 0 ]; then
+            echo "Still waiting for GMS... ($((attempt * 30 / 60)) minutes elapsed)"
+        fi
+        sleep 30
+        attempt=$((attempt + 1))
+    done
+    
+    echo "WARNING: GMS not ready after $((max_attempts * 30 / 60)) minutes"
+    return 1
+}
+
 # Parse DATAHUB_GMS_URL (format: https://uuid-8080.region.stg.rapu.app)
 # This is provided by the service credential integration from GMS
 if [ -n "$DATAHUB_GMS_URL" ]; then
@@ -56,6 +79,26 @@ if [ -n "$DATAHUB_GMS_URL" ]; then
     export DATAHUB_GMS_PROTOCOL="$GMS_PROTO"
     
     echo "GMS configured from URL: protocol=$DATAHUB_GMS_PROTOCOL, host=$DATAHUB_GMS_HOST, port=$DATAHUB_GMS_PORT"
+elif [ -n "$GMS_SERVICE_NAME" ]; then
+    # Fallback: try to reach GMS using internal service name
+    # Try common internal DNS patterns
+    echo "DATAHUB_GMS_URL not set, trying to discover GMS via service name: $GMS_SERVICE_NAME"
+    
+    # Try internal service name with port 8080 (GMS default)
+    for gms_candidate in "${GMS_SERVICE_NAME}:8080" "${GMS_SERVICE_NAME}.default.svc.cluster.local:8080"; do
+        echo "Trying GMS at $gms_candidate..."
+        if curl -sf --max-time 5 "http://${gms_candidate}/config" > /dev/null 2>&1; then
+            export DATAHUB_GMS_HOST="${gms_candidate%%:*}"
+            export DATAHUB_GMS_PORT="${gms_candidate#*:}"
+            export DATAHUB_GMS_PROTOCOL="http"
+            echo "GMS discovered at $gms_candidate"
+            break
+        fi
+    done
+    
+    if [ -z "$DATAHUB_GMS_HOST" ]; then
+        echo "WARNING: Could not discover GMS, using defaults"
+    fi
 fi
 
 # Parse OPENSEARCH_URI (format: https://user:pass@host:port)
@@ -91,9 +134,10 @@ fi
 # Wait for all dependencies to be DNS-resolvable before proceeding
 echo "=== Waiting for dependencies ==="
 
-# Wait for GMS (don't fail if it times out - let the app handle it)
-if [ -n "$DATAHUB_GMS_HOST" ]; then
-    wait_for_dns "$DATAHUB_GMS_HOST" || echo "Continuing anyway..."
+# Wait for GMS to be ready (not just DNS, but actual HTTP response)
+if [ -n "$DATAHUB_GMS_HOST" ] && [ "$DATAHUB_GMS_HOST" != "host.docker.internal" ]; then
+    GMS_URL="${DATAHUB_GMS_PROTOCOL:-http}://${DATAHUB_GMS_HOST}:${DATAHUB_GMS_PORT:-8080}"
+    wait_for_gms "$GMS_URL" || echo "Continuing anyway..."
 fi
 
 # Wait for OpenSearch
