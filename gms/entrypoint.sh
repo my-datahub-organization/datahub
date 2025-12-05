@@ -126,23 +126,38 @@ if [ -n "$KAFKA_BOOTSTRAP_SERVER" ]; then
     TRUSTSTORE_PATH="/tmp/kafka-truststore.jks"
     TRUSTSTORE_PASS="changeit"
     
+    # Check if required tools are available
+    echo "DEBUG: Checking for required tools..."
+    which openssl && echo "  openssl: $(openssl version)" || echo "  openssl: NOT FOUND"
+    which keytool && echo "  keytool: found" || echo "  keytool: NOT FOUND"
+    which timeout && echo "  timeout: found" || echo "  timeout: NOT FOUND"
+    
     # Fetch the CA certificate chain from the Kafka server
     echo "Fetching CA certificate from $KAFKA_HOST:$KAFKA_PORT..."
-    if echo | timeout 10 openssl s_client -connect "$KAFKA_HOST:$KAFKA_PORT" -servername "$KAFKA_HOST" -showcerts 2>/dev/null | openssl x509 -outform PEM > /tmp/kafka-ca.pem 2>/dev/null; then
+    
+    # Try to fetch certificate with full error output
+    echo "DEBUG: Running openssl s_client..."
+    if echo | openssl s_client -connect "$KAFKA_HOST:$KAFKA_PORT" -servername "$KAFKA_HOST" -showcerts </dev/null 2>&1 | tee /tmp/openssl-output.txt | sed -n '/-----BEGIN CERTIFICATE-----/,/-----END CERTIFICATE-----/p' > /tmp/kafka-ca.pem; then
+        echo "DEBUG: openssl command completed"
+        echo "DEBUG: Certificate file size: $(wc -c < /tmp/kafka-ca.pem) bytes"
+        
         if [ -s /tmp/kafka-ca.pem ]; then
             echo "CA certificate fetched successfully"
+            cat /tmp/kafka-ca.pem | head -5
             
             # Create a new truststore with the CA certificate
             rm -f "$TRUSTSTORE_PATH"
+            echo "DEBUG: Creating truststore..."
             keytool -import -trustcacerts \
                 -keystore "$TRUSTSTORE_PATH" \
                 -storepass "$TRUSTSTORE_PASS" \
                 -noprompt \
                 -alias kafka-ca \
-                -file /tmp/kafka-ca.pem 2>/dev/null
+                -file /tmp/kafka-ca.pem 2>&1
             
             if [ -f "$TRUSTSTORE_PATH" ]; then
                 echo "Truststore created at $TRUSTSTORE_PATH"
+                ls -la "$TRUSTSTORE_PATH"
                 # Update Kafka SSL configuration to use our truststore
                 export SPRING_KAFKA_PROPERTIES_SSL_TRUSTSTORE_LOCATION="$TRUSTSTORE_PATH"
                 export SPRING_KAFKA_PROPERTIES_SSL_TRUSTSTORE_PASSWORD="$TRUSTSTORE_PASS"
@@ -151,9 +166,13 @@ if [ -n "$KAFKA_BOOTSTRAP_SERVER" ]; then
             fi
         else
             echo "WARNING: CA certificate file is empty"
+            echo "DEBUG: openssl output was:"
+            cat /tmp/openssl-output.txt | head -50
         fi
     else
-        echo "WARNING: Could not fetch CA certificate from Kafka"
+        echo "WARNING: Could not fetch CA certificate from Kafka (openssl failed)"
+        echo "DEBUG: openssl output was:"
+        cat /tmp/openssl-output.txt 2>/dev/null | head -50 || echo "(no output captured)"
     fi
     
     echo "Kafka: $KAFKA_BOOTSTRAP_SERVER (SASL_SSL)"
