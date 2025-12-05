@@ -57,6 +57,11 @@ fi
 
 # Parse OPENSEARCH_URI (format: https://user:pass@host:port)
 if [ -n "$OPENSEARCH_URI" ]; then
+    echo "DEBUG: Parsing OPENSEARCH_URI..."
+    echo "DEBUG: OPENSEARCH_URI='$OPENSEARCH_URI'"
+    
+    # Get protocol (https or http)
+    OS_PROTO="${OPENSEARCH_URI%%://*}"
     OS_URL_NO_PROTO="${OPENSEARCH_URI#*://}"
     OS_USERPASS="${OS_URL_NO_PROTO%%@*}"
     export ELASTICSEARCH_USERNAME="${OS_USERPASS%%:*}"
@@ -64,7 +69,20 @@ if [ -n "$OPENSEARCH_URI" ]; then
     OS_HOSTPORT="${OS_URL_NO_PROTO#*@}"
     export ELASTICSEARCH_HOST="${OS_HOSTPORT%%:*}"
     export ELASTICSEARCH_PORT="${OS_HOSTPORT#*:}"
-    echo "OpenSearch: $ELASTICSEARCH_HOST:$ELASTICSEARCH_PORT"
+    
+    # Enable SSL if using https
+    if [ "$OS_PROTO" = "https" ]; then
+        export ELASTICSEARCH_USE_SSL="true"
+        export ELASTICSEARCH_SSL_PROTOCOL="TLSv1.2"
+    fi
+    
+    echo "DEBUG: ELASTICSEARCH_HOST='$ELASTICSEARCH_HOST'"
+    echo "DEBUG: ELASTICSEARCH_PORT='$ELASTICSEARCH_PORT'"
+    echo "DEBUG: ELASTICSEARCH_USERNAME='$ELASTICSEARCH_USERNAME'"
+    echo "DEBUG: ELASTICSEARCH_USE_SSL='$ELASTICSEARCH_USE_SSL'"
+    echo "OpenSearch: $ELASTICSEARCH_HOST:$ELASTICSEARCH_PORT (SSL: ${ELASTICSEARCH_USE_SSL:-false})"
+else
+    echo "WARNING: OPENSEARCH_URI is not set!"
 fi
 
 # Build Kafka SASL JAAS config
