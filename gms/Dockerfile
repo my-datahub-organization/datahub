@@ -5,6 +5,11 @@
 ARG DATAHUB_VERSION=head
 FROM acryldata/datahub-gms:${DATAHUB_VERSION}
 
+# Install openssl for fetching Kafka SSL certificates
+USER root
+RUN apk add --no-cache openssl
+USER datahub
+
 # Copy custom entrypoint script
 COPY entrypoint.sh /custom-entrypoint.sh
 
