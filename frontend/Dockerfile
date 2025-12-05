@@ -30,8 +30,8 @@ ENV KAFKA_PROPERTIES_SSL_TRUSTSTORE_PASSWORD=changeit
 ENV ELASTIC_CLIENT_USE_SSL=true
 ENV ELASTIC_CLIENT_SSL_PROTOCOL=TLSv1.2
 
-# JVM Settings - include SSL truststore
-ENV JAVA_OPTS="-Xms512m -Xmx512m -Dhttp.port=9002 -Dconfig.file=datahub-frontend/conf/application.conf -Djava.security.auth.login.config=datahub-frontend/conf/jaas.conf -Dlogback.configurationFile=datahub-frontend/conf/logback.xml -Dlogback.debug=false -Dpidfile.path=/dev/null -Djavax.net.ssl.trustStore=/etc/ssl/certs/java/cacerts -Djavax.net.ssl.trustStorePassword=changeit"
+# JVM Settings - reduced memory for container environments + SSL truststore
+ENV JAVA_OPTS="-Xms256m -Xmx384m -Dhttp.port=9002 -Dconfig.file=datahub-frontend/conf/application.conf -Djava.security.auth.login.config=datahub-frontend/conf/jaas.conf -Dlogback.configurationFile=datahub-frontend/conf/logback.xml -Dlogback.debug=false -Dpidfile.path=/dev/null -Djavax.net.ssl.trustStore=/etc/ssl/certs/java/cacerts -Djavax.net.ssl.trustStorePassword=changeit"
 
 # Expose Frontend port
 EXPOSE 9002

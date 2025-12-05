@@ -93,9 +93,9 @@ if [ -n "$KAFKA_SASL_PASSWORD" ]; then
     export KAFKA_PROPERTIES_SASL_PASSWORD="$KAFKA_SASL_PASSWORD"
 fi
 
-# Kafka configuration (SASL_PLAINTEXT - no SSL)
+# Kafka configuration
 if [ -n "$KAFKA_BOOTSTRAP_SERVER" ]; then
-    echo "Kafka: $KAFKA_BOOTSTRAP_SERVER (SASL_PLAINTEXT)"
+    echo "Kafka: $KAFKA_BOOTSTRAP_SERVER (SASL_SSL)"
 fi
 
 # Generate system client secret if not provided (used for GMS authentication)
