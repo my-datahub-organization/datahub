@@ -100,13 +100,24 @@ if [ -n "$KAFKA_BOOTSTRAP_SERVER" ]; then
     CERT_ATTEMPTS=0
     MAX_CERT_ATTEMPTS=40
     while [ $CERT_ATTEMPTS -lt $MAX_CERT_ATTEMPTS ]; do
-        echo | openssl s_client -connect "$KAFKA_HOST:$KAFKA_PORT" -servername "$KAFKA_HOST" 2>/dev/null | \
-            openssl x509 -outform PEM > /tmp/kafka-cert.pem 2>/dev/null || true
-        
-        if [ -s /tmp/kafka-cert.pem ]; then
-            echo "Kafka SSL certificate fetched successfully after $((CERT_ATTEMPTS * 30)) seconds"
-            break
+        # First test if we can reach the port at all
+        if ! timeout 5 bash -c "echo > /dev/tcp/$KAFKA_HOST/$KAFKA_PORT" 2>/dev/null; then
+            echo "Cannot connect to $KAFKA_HOST:$KAFKA_PORT yet..."
+        else
+            echo "TCP connection to $KAFKA_HOST:$KAFKA_PORT successful, fetching certificate..."
+            # Fetch the certificate - use timeout and capture any errors
+            CERT_OUTPUT=$(echo | timeout 10 openssl s_client -connect "$KAFKA_HOST:$KAFKA_PORT" -servername "$KAFKA_HOST" 2>&1)
+            echo "$CERT_OUTPUT" | openssl x509 -outform PEM > /tmp/kafka-cert.pem 2>/dev/null || true
+            
+            if [ -s /tmp/kafka-cert.pem ]; then
+                echo "Kafka SSL certificate fetched successfully after $((CERT_ATTEMPTS * 30)) seconds"
+                break
+            else
+                echo "Certificate extraction failed. OpenSSL output:"
+                echo "$CERT_OUTPUT" | head -20
+            fi
         fi
+        
         CERT_ATTEMPTS=$((CERT_ATTEMPTS + 1))
         if [ $((CERT_ATTEMPTS % 2)) -eq 0 ]; then
             echo "Waiting for Kafka SSL endpoint... ($((CERT_ATTEMPTS * 30 / 60)) minutes elapsed)"
