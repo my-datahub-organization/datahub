@@ -117,9 +117,46 @@ fi
 
 echo "=== All dependencies ready ==="
 
-# Kafka configuration (SASL_PLAINTEXT - no SSL)
+# Kafka SSL Configuration - fetch and import Aiven's CA certificate
 if [ -n "$KAFKA_BOOTSTRAP_SERVER" ]; then
-    echo "Kafka: $KAFKA_BOOTSTRAP_SERVER (SASL_PLAINTEXT)"
+    KAFKA_HOST="${KAFKA_BOOTSTRAP_SERVER%%:*}"
+    KAFKA_PORT="${KAFKA_BOOTSTRAP_SERVER#*:}"
+    
+    echo "=== Setting up Kafka SSL truststore ==="
+    TRUSTSTORE_PATH="/tmp/kafka-truststore.jks"
+    TRUSTSTORE_PASS="changeit"
+    
+    # Fetch the CA certificate chain from the Kafka server
+    echo "Fetching CA certificate from $KAFKA_HOST:$KAFKA_PORT..."
+    if echo | timeout 10 openssl s_client -connect "$KAFKA_HOST:$KAFKA_PORT" -servername "$KAFKA_HOST" -showcerts 2>/dev/null | openssl x509 -outform PEM > /tmp/kafka-ca.pem 2>/dev/null; then
+        if [ -s /tmp/kafka-ca.pem ]; then
+            echo "CA certificate fetched successfully"
+            
+            # Create a new truststore with the CA certificate
+            rm -f "$TRUSTSTORE_PATH"
+            keytool -import -trustcacerts \
+                -keystore "$TRUSTSTORE_PATH" \
+                -storepass "$TRUSTSTORE_PASS" \
+                -noprompt \
+                -alias kafka-ca \
+                -file /tmp/kafka-ca.pem 2>/dev/null
+            
+            if [ -f "$TRUSTSTORE_PATH" ]; then
+                echo "Truststore created at $TRUSTSTORE_PATH"
+                # Update Kafka SSL configuration to use our truststore
+                export SPRING_KAFKA_PROPERTIES_SSL_TRUSTSTORE_LOCATION="$TRUSTSTORE_PATH"
+                export SPRING_KAFKA_PROPERTIES_SSL_TRUSTSTORE_PASSWORD="$TRUSTSTORE_PASS"
+            else
+                echo "WARNING: Failed to create truststore"
+            fi
+        else
+            echo "WARNING: CA certificate file is empty"
+        fi
+    else
+        echo "WARNING: Could not fetch CA certificate from Kafka"
+    fi
+    
+    echo "Kafka: $KAFKA_BOOTSTRAP_SERVER (SASL_SSL)"
 fi
 
 echo "=== Configuration Complete ==="

@@ -33,11 +33,10 @@ ENV KAFKA_SCHEMAREGISTRY_URL=http://localhost:8080/schema-registry/api/
 # Kafka SASL with SSL (required by Aiven Kafka)
 ENV SPRING_KAFKA_PROPERTIES_SECURITY_PROTOCOL=SASL_SSL
 ENV SPRING_KAFKA_PROPERTIES_SASL_MECHANISM=PLAIN
-# Disable SSL certificate verification (Aiven uses self-signed CA)
+# Disable hostname verification (Aiven uses internal hostnames)
 ENV SPRING_KAFKA_PROPERTIES_SSL_ENDPOINT_IDENTIFICATION_ALGORITHM=
+# Truststore is configured dynamically by entrypoint (fetches CA from Kafka server)
 ENV SPRING_KAFKA_PROPERTIES_SSL_TRUSTSTORE_TYPE=JKS
-ENV SPRING_KAFKA_PROPERTIES_SSL_TRUSTSTORE_LOCATION=/etc/ssl/certs/java/cacerts
-ENV SPRING_KAFKA_PROPERTIES_SSL_TRUSTSTORE_PASSWORD=changeit
 
 # OpenSearch Configuration
 ENV ELASTICSEARCH_PROTOCOL=https
