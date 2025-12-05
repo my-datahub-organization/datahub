@@ -6,6 +6,17 @@ set -e
 
 echo "=== DataHub Frontend Entrypoint Starting ==="
 
+# Show memory information
+echo "=== Memory Information ==="
+if [ -f /proc/meminfo ]; then
+    echo "Total Memory: $(grep MemTotal /proc/meminfo | awk '{print $2 / 1024 " MB"}')"
+    echo "Available Memory: $(grep MemAvailable /proc/meminfo | awk '{print $2 / 1024 " MB"}')"
+    echo "Free Memory: $(grep MemFree /proc/meminfo | awk '{print $2 / 1024 " MB"}')"
+else
+    echo "Memory info not available (/proc/meminfo not found)"
+fi
+echo "==========================="
+
 # Debug: show all DATAHUB_* environment variables
 echo "=== Environment Variables Debug ==="
 echo "DATAHUB_GMS_URL='$DATAHUB_GMS_URL'"
