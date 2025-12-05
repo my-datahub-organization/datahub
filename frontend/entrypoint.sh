@@ -4,6 +4,32 @@
 
 set -e
 
+echo "=== DataHub Frontend Entrypoint Starting ==="
+
+# Function to wait for DNS resolution of a host
+# Default: 120 attempts * 10 seconds = 20 minutes max wait
+wait_for_dns() {
+    local host="$1"
+    local max_attempts="${2:-120}"
+    local attempt=1
+    
+    echo "Waiting for DNS resolution of $host (max wait: $((max_attempts * 10 / 60)) minutes)..."
+    while [ $attempt -le $max_attempts ]; do
+        if getent hosts "$host" > /dev/null 2>&1; then
+            echo "DNS resolved for $host after $((attempt * 10)) seconds"
+            return 0
+        fi
+        if [ $((attempt % 6)) -eq 0 ]; then
+            echo "Still waiting for $host... ($((attempt * 10 / 60)) minutes elapsed)"
+        fi
+        sleep 10
+        attempt=$((attempt + 1))
+    done
+    
+    echo "WARNING: DNS resolution failed for $host after $((max_attempts * 10 / 60)) minutes"
+    return 1
+}
+
 # Parse DATAHUB_GMS_URL (format: https://uuid-8080.region.stg.rapu.app)
 # This is provided by the service credential integration from GMS
 if [ -n "$DATAHUB_GMS_URL" ]; then
@@ -61,6 +87,27 @@ fi
 if [ -z "$KAFKA_PROPERTIES_SSL_TRUSTSTORE_PASSWORD" ]; then
     export KAFKA_PROPERTIES_SSL_TRUSTSTORE_PASSWORD="changeit"
 fi
+
+# Wait for all dependencies to be DNS-resolvable before proceeding
+echo "=== Waiting for dependencies ==="
+
+# Wait for GMS
+if [ -n "$DATAHUB_GMS_HOST" ]; then
+    wait_for_dns "$DATAHUB_GMS_HOST" 120
+fi
+
+# Wait for OpenSearch
+if [ -n "$ELASTIC_CLIENT_HOST" ]; then
+    wait_for_dns "$ELASTIC_CLIENT_HOST" 120
+fi
+
+# Wait for Kafka
+if [ -n "$KAFKA_BOOTSTRAP_SERVER" ]; then
+    KAFKA_HOST="${KAFKA_BOOTSTRAP_SERVER%%:*}"
+    wait_for_dns "$KAFKA_HOST" 120
+fi
+
+echo "=== All dependencies ready ==="
 
 # Debug: print configured endpoints (without secrets)
 echo "=== DataHub Frontend Configuration ==="
