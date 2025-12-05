@@ -99,18 +99,41 @@ fi
 
 echo "=== All dependencies ready ==="
 
-# Kafka SSL configuration - use default Java truststore with public CAs
-# SASL authentication is configured via JAAS config above
+# Kafka SSL configuration - fetch server cert and create truststore
 if [ -n "$KAFKA_BOOTSTRAP_SERVER" ]; then
-    echo "Kafka configured: $KAFKA_BOOTSTRAP_SERVER (SASL_SSL with PLAIN)"
+    KAFKA_HOST="${KAFKA_BOOTSTRAP_SERVER%%:*}"
+    KAFKA_PORT="${KAFKA_BOOTSTRAP_SERVER#*:}"
+    TRUSTSTORE="/tmp/kafka-truststore.jks"
+    TRUSTSTORE_PASS="changeit"
     
-    # Use Java's default cacerts (contains public CAs like Let's Encrypt)
-    export SPRING_KAFKA_PROPERTIES_SSL_TRUSTSTORE_LOCATION="/etc/ssl/certs/java/cacerts"
-    export SPRING_KAFKA_PROPERTIES_SSL_TRUSTSTORE_PASSWORD="changeit"
-    export SPRING_KAFKA_PROPERTIES_SSL_TRUSTSTORE_TYPE="JKS"
+    echo "Fetching Kafka certificate from $KAFKA_HOST:$KAFKA_PORT..."
+    
+    # Fetch server certificate
+    echo | openssl s_client -connect "$KAFKA_HOST:$KAFKA_PORT" -servername "$KAFKA_HOST" 2>/dev/null \
+        | sed -n '/-----BEGIN CERTIFICATE-----/,/-----END CERTIFICATE-----/p' > /tmp/kafka.pem
+    
+    if [ -s /tmp/kafka.pem ]; then
+        keytool -import -trustcacerts -alias kafka -file /tmp/kafka.pem \
+            -keystore "$TRUSTSTORE" -storepass "$TRUSTSTORE_PASS" -noprompt 2>/dev/null || true
+        rm -f /tmp/kafka.pem
+        
+        if [ -f "$TRUSTSTORE" ]; then
+            export SPRING_KAFKA_PROPERTIES_SSL_TRUSTSTORE_LOCATION="$TRUSTSTORE"
+            export SPRING_KAFKA_PROPERTIES_SSL_TRUSTSTORE_PASSWORD="$TRUSTSTORE_PASS"
+            export SPRING_KAFKA_PROPERTIES_SSL_TRUSTSTORE_TYPE="JKS"
+            echo "Kafka truststore created at $TRUSTSTORE"
+        fi
+    else
+        echo "WARNING: Could not fetch Kafka cert, using default cacerts"
+        export SPRING_KAFKA_PROPERTIES_SSL_TRUSTSTORE_LOCATION="/etc/ssl/certs/java/cacerts"
+        export SPRING_KAFKA_PROPERTIES_SSL_TRUSTSTORE_PASSWORD="changeit"
+        export SPRING_KAFKA_PROPERTIES_SSL_TRUSTSTORE_TYPE="JKS"
+    fi
+    
+    echo "Kafka: $KAFKA_BOOTSTRAP_SERVER (SASL_SSL)"
 fi
 
-# Disable hostname verification (managed service certs may use internal names)
+# Disable hostname verification
 export SPRING_KAFKA_PROPERTIES_SSL_ENDPOINT_IDENTIFICATION_ALGORITHM=""
 
 echo "=== Configuration Complete ==="
