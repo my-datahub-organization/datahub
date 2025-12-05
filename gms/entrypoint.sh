@@ -10,26 +10,26 @@ cd /tmp
 echo "=== GMS Entrypoint Starting ==="
 
 # Function to wait for DNS resolution of a host
-# Default: 120 attempts * 10 seconds = 20 minutes max wait
+# Default: 40 attempts * 30 seconds = 20 minutes max wait
 wait_for_dns() {
     local host="$1"
-    local max_attempts="${2:-120}"
+    local max_attempts="${2:-40}"
     local attempt=1
     
-    echo "Waiting for DNS resolution of $host (max wait: $((max_attempts * 10 / 60)) minutes)..."
+    echo "Waiting for DNS resolution of $host (max wait: $((max_attempts * 30 / 60)) minutes)..."
     while [ $attempt -le $max_attempts ]; do
         if getent hosts "$host" > /dev/null 2>&1; then
-            echo "DNS resolved for $host after $((attempt * 10)) seconds"
+            echo "DNS resolved for $host after $((attempt * 30)) seconds"
             return 0
         fi
-        if [ $((attempt % 6)) -eq 0 ]; then
-            echo "Still waiting for $host... ($((attempt * 10 / 60)) minutes elapsed)"
+        if [ $((attempt % 2)) -eq 0 ]; then
+            echo "Still waiting for $host... ($((attempt * 30 / 60)) minutes elapsed)"
         fi
-        sleep 10
+        sleep 30
         attempt=$((attempt + 1))
     done
     
-    echo "WARNING: DNS resolution failed for $host after $((max_attempts * 10 / 60)) minutes"
+    echo "WARNING: DNS resolution failed for $host after $((max_attempts * 30 / 60)) minutes"
     return 1
 }
 
@@ -69,21 +69,21 @@ fi
 # Wait for all dependencies to be DNS-resolvable before proceeding
 echo "=== Waiting for dependencies ==="
 
-# Wait for PostgreSQL
+# Wait for PostgreSQL (don't fail if it times out - let the app handle it)
 if [ -n "$EBEAN_DATASOURCE_HOST" ]; then
     PG_HOST="${EBEAN_DATASOURCE_HOST%%:*}"
-    wait_for_dns "$PG_HOST" 120
+    wait_for_dns "$PG_HOST" || echo "Continuing anyway..."
 fi
 
 # Wait for OpenSearch
 if [ -n "$ELASTICSEARCH_HOST" ]; then
-    wait_for_dns "$ELASTICSEARCH_HOST" 120
+    wait_for_dns "$ELASTICSEARCH_HOST" || echo "Continuing anyway..."
 fi
 
 # Wait for Kafka
 if [ -n "$KAFKA_BOOTSTRAP_SERVER" ]; then
     KAFKA_HOST="${KAFKA_BOOTSTRAP_SERVER%%:*}"
-    wait_for_dns "$KAFKA_HOST" 120
+    wait_for_dns "$KAFKA_HOST" || echo "Continuing anyway..."
 fi
 
 echo "=== All dependencies ready ==="
@@ -96,18 +96,22 @@ if [ -n "$KAFKA_BOOTSTRAP_SERVER" ]; then
     
     echo "Fetching Kafka SSL certificate from $KAFKA_HOST:$KAFKA_PORT..."
     
-    # Download server certificate (retry a few times as connection might not be ready yet)
+    # Download server certificate (retry for up to 20 minutes as Kafka may still be starting)
     CERT_ATTEMPTS=0
-    while [ $CERT_ATTEMPTS -lt 30 ]; do
+    MAX_CERT_ATTEMPTS=40
+    while [ $CERT_ATTEMPTS -lt $MAX_CERT_ATTEMPTS ]; do
         echo | openssl s_client -connect "$KAFKA_HOST:$KAFKA_PORT" -servername "$KAFKA_HOST" 2>/dev/null | \
             openssl x509 -outform PEM > /tmp/kafka-cert.pem 2>/dev/null || true
         
         if [ -s /tmp/kafka-cert.pem ]; then
+            echo "Kafka SSL certificate fetched successfully after $((CERT_ATTEMPTS * 30)) seconds"
             break
         fi
-        echo "Waiting for Kafka SSL endpoint... (attempt $((CERT_ATTEMPTS + 1))/30)"
-        sleep 5
         CERT_ATTEMPTS=$((CERT_ATTEMPTS + 1))
+        if [ $((CERT_ATTEMPTS % 2)) -eq 0 ]; then
+            echo "Waiting for Kafka SSL endpoint... ($((CERT_ATTEMPTS * 30 / 60)) minutes elapsed)"
+        fi
+        sleep 30
     done
     
     if [ -s /tmp/kafka-cert.pem ]; then
@@ -127,7 +131,7 @@ if [ -n "$KAFKA_BOOTSTRAP_SERVER" ]; then
         
         echo "Kafka SSL truststore created with server certificate"
     else
-        echo "WARNING: Could not fetch Kafka certificate after 30 attempts, SSL may fail"
+        echo "WARNING: Could not fetch Kafka certificate after $((MAX_CERT_ATTEMPTS * 30 / 60)) minutes, SSL may fail"
     fi
 fi
 

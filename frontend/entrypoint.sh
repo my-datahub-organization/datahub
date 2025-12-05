@@ -7,26 +7,26 @@ set -e
 echo "=== DataHub Frontend Entrypoint Starting ==="
 
 # Function to wait for DNS resolution of a host
-# Default: 120 attempts * 10 seconds = 20 minutes max wait
+# Default: 40 attempts * 30 seconds = 20 minutes max wait
 wait_for_dns() {
     local host="$1"
-    local max_attempts="${2:-120}"
+    local max_attempts="${2:-40}"
     local attempt=1
     
-    echo "Waiting for DNS resolution of $host (max wait: $((max_attempts * 10 / 60)) minutes)..."
+    echo "Waiting for DNS resolution of $host (max wait: $((max_attempts * 30 / 60)) minutes)..."
     while [ $attempt -le $max_attempts ]; do
         if getent hosts "$host" > /dev/null 2>&1; then
-            echo "DNS resolved for $host after $((attempt * 10)) seconds"
+            echo "DNS resolved for $host after $((attempt * 30)) seconds"
             return 0
         fi
-        if [ $((attempt % 6)) -eq 0 ]; then
-            echo "Still waiting for $host... ($((attempt * 10 / 60)) minutes elapsed)"
+        if [ $((attempt % 2)) -eq 0 ]; then
+            echo "Still waiting for $host... ($((attempt * 30 / 60)) minutes elapsed)"
         fi
-        sleep 10
+        sleep 30
         attempt=$((attempt + 1))
     done
     
-    echo "WARNING: DNS resolution failed for $host after $((max_attempts * 10 / 60)) minutes"
+    echo "WARNING: DNS resolution failed for $host after $((max_attempts * 30 / 60)) minutes"
     return 1
 }
 
@@ -91,20 +91,20 @@ fi
 # Wait for all dependencies to be DNS-resolvable before proceeding
 echo "=== Waiting for dependencies ==="
 
-# Wait for GMS
+# Wait for GMS (don't fail if it times out - let the app handle it)
 if [ -n "$DATAHUB_GMS_HOST" ]; then
-    wait_for_dns "$DATAHUB_GMS_HOST" 120
+    wait_for_dns "$DATAHUB_GMS_HOST" || echo "Continuing anyway..."
 fi
 
 # Wait for OpenSearch
 if [ -n "$ELASTIC_CLIENT_HOST" ]; then
-    wait_for_dns "$ELASTIC_CLIENT_HOST" 120
+    wait_for_dns "$ELASTIC_CLIENT_HOST" || echo "Continuing anyway..."
 fi
 
 # Wait for Kafka
 if [ -n "$KAFKA_BOOTSTRAP_SERVER" ]; then
     KAFKA_HOST="${KAFKA_BOOTSTRAP_SERVER%%:*}"
-    wait_for_dns "$KAFKA_HOST" 120
+    wait_for_dns "$KAFKA_HOST" || echo "Continuing anyway..."
 fi
 
 echo "=== All dependencies ready ==="
