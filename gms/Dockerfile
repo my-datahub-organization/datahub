@@ -66,6 +66,13 @@ ENV BOOTSTRAP_SYSTEM_UPDATE_WAIT_FOR_SYSTEM_UPDATE=false
 # Force reindex on startup if indices are missing
 ENV ALWAYS_EMIT_CHANGE_LOG=true
 
+# Authentication disabled by default - can be enabled via environment variables if needed
+# ENV DATAHUB_SYSTEM_CLIENT_ID=__datahub_system
+# ENV DATAHUB_SYSTEM_CLIENT_SECRET=your-secret-here
+# ENV METADATA_SERVICE_AUTH_ENABLED=true
+# ENV DATAHUB_TOKEN_SERVICE_SIGNING_KEY=your-signing-key-here
+# ENV DATAHUB_TOKEN_SERVICE_SALT=your-salt-here
+
 # JVM Settings - DataHub GMS needs adequate memory for bootstrap and index creation
 # SSL truststore is configured dynamically by entrypoint script
 ENV JAVA_OPTS="-Xms1024m -Xmx2048m -XX:+UseG1GC -XX:MaxGCPauseMillis=200"
