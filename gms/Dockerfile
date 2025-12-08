@@ -7,7 +7,7 @@ FROM acryldata/datahub-gms:${DATAHUB_VERSION}
 
 # Install openssl for fetching Kafka SSL certificates
 USER root
-RUN apk add --no-cache openssl
+RUN apk add --no-cache openssl bc
 USER datahub
 
 # Copy custom entrypoint script

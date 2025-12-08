@@ -9,6 +9,39 @@ cd /tmp
 
 echo "=== GMS Entrypoint Starting ==="
 
+# Display memory information
+echo "=== Container Memory Information ==="
+if [ -f /sys/fs/cgroup/memory/memory.limit_in_bytes ]; then
+    MEMORY_LIMIT=$(cat /sys/fs/cgroup/memory/memory.limit_in_bytes)
+    MEMORY_LIMIT_GB=$(echo "scale=2; $MEMORY_LIMIT / 1024 / 1024 / 1024" | bc)
+    echo "Memory limit (cgroup v1): ${MEMORY_LIMIT_GB} GB (${MEMORY_LIMIT} bytes)"
+elif [ -f /sys/fs/cgroup/memory.max ]; then
+    MEMORY_LIMIT=$(cat /sys/fs/cgroup/memory.max)
+    if [ "$MEMORY_LIMIT" = "max" ]; then
+        echo "Memory limit (cgroup v2): unlimited"
+    else
+        MEMORY_LIMIT_GB=$(echo "scale=2; $MEMORY_LIMIT / 1024 / 1024 / 1024" | bc)
+        echo "Memory limit (cgroup v2): ${MEMORY_LIMIT_GB} GB (${MEMORY_LIMIT} bytes)"
+    fi
+else
+    echo "Memory limit: Unable to detect (cgroup not available)"
+fi
+
+# Display total system memory
+if [ -f /proc/meminfo ]; then
+    TOTAL_MEM=$(grep MemTotal /proc/meminfo | awk '{print $2}')
+    TOTAL_MEM_GB=$(echo "scale=2; $TOTAL_MEM / 1024 / 1024" | bc)
+    FREE_MEM=$(grep MemAvailable /proc/meminfo | awk '{print $2}')
+    FREE_MEM_GB=$(echo "scale=2; $FREE_MEM / 1024 / 1024" | bc)
+    echo "System total memory: ${TOTAL_MEM_GB} GB"
+    echo "System available memory: ${FREE_MEM_GB} GB"
+fi
+
+# Display JVM memory settings
+echo "JVM memory settings (JAVA_OPTS): $JAVA_OPTS"
+echo "===================================="
+echo ""
+
 # Check for all required environment variables
 # These are populated by service integrations - if not set, the data services aren't ready
 check_required_env_vars() {
@@ -256,6 +289,7 @@ if [ -n "$KAFKA_BOOTSTRAP_SERVER" ]; then
 fi
 
 echo "=== Configuration Complete ==="
+echo ""
 
 # Execute the original entrypoint/command
 exec "$@"
