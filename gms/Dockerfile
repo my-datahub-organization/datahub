@@ -59,9 +59,9 @@ ENV MCE_CONSUMER_ENABLED=true
 ENV PE_CONSUMER_ENABLED=true
 ENV UI_INGESTION_ENABLED=true
 
-# JVM Settings - reduced memory for container environments
+# JVM Settings - DataHub GMS needs adequate memory for bootstrap and index creation
 # SSL truststore is configured dynamically by entrypoint script
-ENV JAVA_OPTS="-Xms256m -Xmx512m"
+ENV JAVA_OPTS="-Xms1024m -Xmx2048m -XX:+UseG1GC -XX:MaxGCPauseMillis=200"
 
 # Expose GMS port
 EXPOSE 8080
