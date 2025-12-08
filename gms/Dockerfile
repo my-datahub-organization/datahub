@@ -59,6 +59,13 @@ ENV MCE_CONSUMER_ENABLED=true
 ENV PE_CONSUMER_ENABLED=true
 ENV UI_INGESTION_ENABLED=true
 
+# Bootstrap Configuration - Required for index creation and system setup
+ENV BOOTSTRAP_SYSTEM_UPDATE_ENABLED=true
+ENV DATAHUB_ANALYTICS_ENABLED=true
+ENV BOOTSTRAP_SYSTEM_UPDATE_WAIT_FOR_SYSTEM_UPDATE=false
+# Force reindex on startup if indices are missing
+ENV ALWAYS_EMIT_CHANGE_LOG=true
+
 # JVM Settings - DataHub GMS needs adequate memory for bootstrap and index creation
 # SSL truststore is configured dynamically by entrypoint script
 ENV JAVA_OPTS="-Xms1024m -Xmx2048m -XX:+UseG1GC -XX:MaxGCPauseMillis=200"
