@@ -5,6 +5,11 @@
 ARG DATAHUB_VERSION=head
 FROM acryldata/datahub-frontend-react:${DATAHUB_VERSION}
 
+# Install bash for entrypoint script
+USER root
+RUN apk add --no-cache bash
+USER datahub
+
 # Copy entrypoint script that parses connection string env vars
 COPY entrypoint.sh /entrypoint.sh
 
