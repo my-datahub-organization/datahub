@@ -50,8 +50,9 @@ check_required_env_vars() {
     [ -z "$DATABASE_URL" ] && missing="$missing DATABASE_URL"
     [ -z "$OPENSEARCH_URI" ] && missing="$missing OPENSEARCH_URI"
     [ -z "$KAFKA_BOOTSTRAP_SERVER" ] && missing="$missing KAFKA_BOOTSTRAP_SERVER"
-    [ -z "$KAFKA_SASL_USERNAME" ] && missing="$missing KAFKA_SASL_USERNAME"
-    [ -z "$KAFKA_SASL_PASSWORD" ] && missing="$missing KAFKA_SASL_PASSWORD"
+    [ -z "$KAFKA_ACCESS_CERT" ] && missing="$missing KAFKA_ACCESS_CERT"
+    [ -z "$KAFKA_ACCESS_KEY" ] && missing="$missing KAFKA_ACCESS_KEY"
+    [ -z "$KAFKA_CA_CERT" ] && missing="$missing KAFKA_CA_CERT"
     
     if [ -n "$missing" ]; then
         echo "=============================================="
@@ -82,7 +83,35 @@ echo "DEBUG: Environment variables from integrations:"
 echo "  DATABASE_URL set: $([ -n "$DATABASE_URL" ] && echo 'YES' || echo 'NO')"
 echo "  OPENSEARCH_URI set: $([ -n "$OPENSEARCH_URI" ] && echo 'YES' || echo 'NO')"
 echo "  KAFKA_BOOTSTRAP_SERVER set: $([ -n "$KAFKA_BOOTSTRAP_SERVER" ] && echo 'YES' || echo 'NO')"
-echo "  KAFKA_SASL_USERNAME set: $([ -n "$KAFKA_SASL_USERNAME" ] && echo 'YES' || echo 'NO')"
+echo "  KAFKA_ACCESS_CERT set: $([ -n "$KAFKA_ACCESS_CERT" ] && echo 'YES' || echo 'NO')"
+echo "  KAFKA_ACCESS_KEY set: $([ -n "$KAFKA_ACCESS_KEY" ] && echo 'YES' || echo 'NO')"
+echo "  KAFKA_CA_CERT set: $([ -n "$KAFKA_CA_CERT" ] && echo 'YES' || echo 'NO')"
+
+# Function to write certificates to disk
+setup_certificates() {
+    local certs_dir="/tmp/certs"
+    mkdir -p "$certs_dir"
+    chmod 700 "$certs_dir"
+    
+    echo "=== Setting up Kafka SSL/TLS certificates ==="
+    
+    # Write Kafka client certificate
+    echo "$KAFKA_ACCESS_CERT" > "$certs_dir/kafka-client.crt"
+    chmod 600 "$certs_dir/kafka-client.crt"
+    echo "Wrote Kafka client certificate to $certs_dir/kafka-client.crt"
+    
+    # Write Kafka client private key
+    echo "$KAFKA_ACCESS_KEY" > "$certs_dir/kafka-client.key"
+    chmod 600 "$certs_dir/kafka-client.key"
+    echo "Wrote Kafka client private key to $certs_dir/kafka-client.key"
+    
+    # Write Kafka CA certificate
+    echo "$KAFKA_CA_CERT" > "$certs_dir/kafka-ca.crt"
+    chmod 644 "$certs_dir/kafka-ca.crt"
+    echo "Wrote Kafka CA certificate to $certs_dir/kafka-ca.crt"
+    
+    echo "Certificate setup complete"
+}
 
 # Function to wait for DNS resolution of a host
 # Default: 40 attempts * 30 seconds = 20 minutes max wait
@@ -153,11 +182,8 @@ else
     echo "WARNING: OPENSEARCH_URI is not set!"
 fi
 
-# Build Kafka SASL JAAS config
-if [ -n "$KAFKA_SASL_USERNAME" ] && [ -n "$KAFKA_SASL_PASSWORD" ]; then
-    export SPRING_KAFKA_PROPERTIES_SASL_JAAS_CONFIG="org.apache.kafka.common.security.plain.PlainLoginModule required username=\"$KAFKA_SASL_USERNAME\" password=\"$KAFKA_SASL_PASSWORD\";"
-    echo "Kafka SASL: user=$KAFKA_SASL_USERNAME"
-fi
+# Setup certificates on disk
+setup_certificates
 
 # Wait for all dependencies to be DNS-resolvable before proceeding
 echo "=== Waiting for dependencies (all must resolve) ==="
@@ -214,78 +240,77 @@ fi
 
 echo "=== All dependencies ready ==="
 
-# Kafka SSL Configuration - fetch and import Aiven's CA certificate
+# Kafka SSL Configuration - use certificate-based authentication (mTLS)
 if [ -n "$KAFKA_BOOTSTRAP_SERVER" ]; then
-    KAFKA_HOST="${KAFKA_BOOTSTRAP_SERVER%%:*}"
-    KAFKA_PORT="${KAFKA_BOOTSTRAP_SERVER#*:}"
+    echo "=== Setting up Kafka SSL configuration ==="
+    CERTS_DIR="/tmp/certs"
     
-    echo "=== Setting up Kafka SSL truststore ==="
+    # Create a PKCS12 keystore from the client certificate and key
+    KEYSTORE_PATH="/tmp/kafka-client-keystore.p12"
+    KEYSTORE_PASS="changeit"
+    
+    echo "Creating PKCS12 keystore from client certificate and key..."
+    openssl pkcs12 -export \
+        -in "$CERTS_DIR/kafka-client.crt" \
+        -inkey "$CERTS_DIR/kafka-client.key" \
+        -out "$KEYSTORE_PATH" \
+        -name kafka-client \
+        -passout "pass:$KEYSTORE_PASS" 2>&1 || {
+        echo "ERROR: Failed to create keystore"
+        exit 1
+    }
+    
+    if [ -f "$KEYSTORE_PATH" ]; then
+        echo "Keystore created at $KEYSTORE_PATH"
+        export SPRING_KAFKA_PROPERTIES_SSL_KEYSTORE_LOCATION="$KEYSTORE_PATH"
+        export SPRING_KAFKA_PROPERTIES_SSL_KEYSTORE_PASSWORD="$KEYSTORE_PASS"
+        export SPRING_KAFKA_PROPERTIES_SSL_KEY_PASSWORD="$KEYSTORE_PASS"
+    else
+        echo "ERROR: Failed to create keystore"
+        exit 1
+    fi
+    
+    # Create truststore from CA certificate
     TRUSTSTORE_PATH="/tmp/kafka-truststore.jks"
     TRUSTSTORE_PASS="changeit"
     
-    # Check if required tools are available
-    echo "DEBUG: Checking for required tools..."
-    which openssl && echo "  openssl: $(openssl version)" || echo "  openssl: NOT FOUND"
-    which keytool && echo "  keytool: found" || echo "  keytool: NOT FOUND"
-    which timeout && echo "  timeout: found" || echo "  timeout: NOT FOUND"
+    rm -f "$TRUSTSTORE_PATH"
     
-    # Fetch the full certificate chain from the Kafka server
-    echo "Fetching certificate chain from $KAFKA_HOST:$KAFKA_PORT..."
+    echo "Importing Kafka CA certificate into truststore..."
+    keytool -import -trustcacerts \
+        -keystore "$TRUSTSTORE_PATH" \
+        -storepass "$TRUSTSTORE_PASS" \
+        -noprompt \
+        -alias "kafka-ca" \
+        -file "$CERTS_DIR/kafka-ca.crt" 2>&1 || {
+        echo "ERROR: Failed to import CA certificate"
+        exit 1
+    }
     
-    # Get the full certificate chain with -showcerts
-    echo "DEBUG: Running openssl s_client..."
-    echo | openssl s_client -connect "$KAFKA_HOST:$KAFKA_PORT" -servername "$KAFKA_HOST" -showcerts </dev/null 2>&1 > /tmp/openssl-output.txt
-    
-    # Extract all certificates from the chain into separate files
-    awk '/-----BEGIN CERTIFICATE-----/,/-----END CERTIFICATE-----/' /tmp/openssl-output.txt > /tmp/kafka-all-certs.pem
-    
-    if [ -s /tmp/kafka-all-certs.pem ]; then
-        echo "DEBUG: Certificate chain fetched, size: $(wc -c < /tmp/kafka-all-certs.pem) bytes"
-        
-        # Count certificates in the chain
-        CERT_COUNT=$(grep -c "BEGIN CERTIFICATE" /tmp/kafka-all-certs.pem || echo "0")
-        echo "DEBUG: Found $CERT_COUNT certificate(s) in the chain"
-        
-        # Create truststore
-        rm -f "$TRUSTSTORE_PATH"
-        
-        # Import each certificate from the chain
-        # We use awk to split certificates and import each one
-        ALIAS_NUM=0
-        awk '/-----BEGIN CERTIFICATE-----/{f=1; n++} f{print > "/tmp/cert-"n".pem"} /-----END CERTIFICATE-----/{f=0}' /tmp/kafka-all-certs.pem
-        
-        for CERT_FILE in /tmp/cert-*.pem; do
-            if [ -f "$CERT_FILE" ] && [ -s "$CERT_FILE" ]; then
-                ALIAS_NUM=$((ALIAS_NUM + 1))
-                echo "DEBUG: Importing certificate $ALIAS_NUM from $CERT_FILE"
-                keytool -import -trustcacerts \
-                    -keystore "$TRUSTSTORE_PATH" \
-                    -storepass "$TRUSTSTORE_PASS" \
-                    -noprompt \
-                    -alias "kafka-cert-$ALIAS_NUM" \
-                    -file "$CERT_FILE" 2>&1 || echo "  (may be duplicate)"
-                rm -f "$CERT_FILE"
-            fi
-        done
-        
-        if [ -f "$TRUSTSTORE_PATH" ]; then
-            echo "Truststore created at $TRUSTSTORE_PATH with $ALIAS_NUM certificate(s)"
-            ls -la "$TRUSTSTORE_PATH"
-            echo "DEBUG: Truststore contents:"
-            keytool -list -keystore "$TRUSTSTORE_PATH" -storepass "$TRUSTSTORE_PASS" 2>&1 | head -15
-            # Update Kafka SSL configuration to use our truststore
-            export SPRING_KAFKA_PROPERTIES_SSL_TRUSTSTORE_LOCATION="$TRUSTSTORE_PATH"
-            export SPRING_KAFKA_PROPERTIES_SSL_TRUSTSTORE_PASSWORD="$TRUSTSTORE_PASS"
-        else
-            echo "WARNING: Failed to create truststore"
-        fi
+    if [ -f "$TRUSTSTORE_PATH" ]; then
+        echo "Truststore created at $TRUSTSTORE_PATH"
+        ls -la "$TRUSTSTORE_PATH"
+        echo "DEBUG: Truststore contents:"
+        keytool -list -keystore "$TRUSTSTORE_PATH" -storepass "$TRUSTSTORE_PASS" 2>&1 | head -15
+        export SPRING_KAFKA_PROPERTIES_SSL_TRUSTSTORE_LOCATION="$TRUSTSTORE_PATH"
+        export SPRING_KAFKA_PROPERTIES_SSL_TRUSTSTORE_PASSWORD="$TRUSTSTORE_PASS"
     else
-        echo "WARNING: Could not fetch certificates from Kafka"
-        echo "DEBUG: openssl output was:"
-        cat /tmp/openssl-output.txt 2>/dev/null | head -50 || echo "(no output captured)"
+        echo "ERROR: Failed to create truststore"
+        exit 1
     fi
     
-    echo "Kafka: $KAFKA_BOOTSTRAP_SERVER (SASL_SSL)"
+    echo "Kafka: $KAFKA_BOOTSTRAP_SERVER (mTLS)"
+fi
+
+# Configure Schema Registry to use GMS's built-in endpoint
+# GMS has a built-in schema registry at /schema-registry/api/
+# We'll set this to point to localhost (GMS itself) once it starts
+if [ -z "$KAFKA_SCHEMAREGISTRY_URL" ]; then
+    # Use GMS's built-in schema registry endpoint
+    export KAFKA_SCHEMAREGISTRY_URL="http://localhost:8080/schema-registry/api/"
+    echo "Schema Registry: Using GMS's built-in endpoint at $KAFKA_SCHEMAREGISTRY_URL"
+else
+    echo "Schema Registry: Using configured URL: $KAFKA_SCHEMAREGISTRY_URL"
 fi
 
 echo "=== Configuration Complete ==="

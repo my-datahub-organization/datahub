@@ -5,29 +5,29 @@
 ARG DATAHUB_VERSION=head
 FROM acryldata/datahub-actions:${DATAHUB_VERSION}-slim
 
-# Install PostgreSQL driver
-RUN pip install psycopg2-binary==2.9.9
+# Install OpenSSL and Java keytool for certificate operations (as root)
+USER root
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    openssl \
+    openjdk-17-jre-headless \
+    && rm -rf /var/lib/apt/lists/*
 
-# Copy entrypoint script that maps env var names
+# Copy entrypoint script
 COPY entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
 
-# GMS Connection
+USER datahub
+
+# GMS Connection (overridden by entrypoint from DATAHUB_GMS_URL)
 ENV DATAHUB_GMS_HOST=host.docker.internal
 ENV DATAHUB_GMS_PORT=8080
 ENV DATAHUB_GMS_PROTOCOL=http
 
-# System Auth
-ENV DATAHUB_SYSTEM_CLIENT_ID=__datahub_system
-
-# Kafka Configuration
-ENV METADATA_AUDIT_EVENT_NAME=MetadataAuditEvent_v4
-ENV METADATA_CHANGE_LOG_VERSIONED_TOPIC_NAME=MetadataChangeLog_Versioned_v1
-
-# Kafka SASL with SSL (required by Aiven Kafka)
-ENV KAFKA_PROPERTIES_SECURITY_PROTOCOL=SASL_SSL
-ENV KAFKA_PROPERTIES_SASL_MECHANISM=PLAIN
-# Disable SSL certificate verification (Aiven uses self-signed CA)
-ENV KAFKA_PROPERTIES_ENABLE_SSL_CERTIFICATE_VERIFICATION=false
+# Kafka Configuration - Certificate-based authentication (mTLS)
+ENV KAFKA_PROPERTIES_SECURITY_PROTOCOL=SSL
+ENV KAFKA_PROPERTIES_SSL_ENDPOINT_IDENTIFICATION_ALGORITHM=
+ENV KAFKA_PROPERTIES_SSL_TRUSTSTORE_TYPE=JKS
+ENV KAFKA_PROPERTIES_SSL_KEYSTORE_TYPE=PKCS12
 
 # Use entrypoint to map env var names
 ENTRYPOINT ["/bin/bash", "/entrypoint.sh"]

@@ -84,18 +84,61 @@ export SCHEMA_REGISTRY_URL="${DATAHUB_GMS_URL}/schema-registry/api/"
 
 echo "GMS: $DATAHUB_GMS_PROTOCOL://$DATAHUB_GMS_HOST:$DATAHUB_GMS_PORT"
 
-# Actions uses KAFKA_PROPERTIES_SASL_USERNAME/PASSWORD directly
-# Map from generic names
-if [ -n "$KAFKA_SASL_USERNAME" ]; then
-    export KAFKA_PROPERTIES_SASL_USERNAME="$KAFKA_SASL_USERNAME"
-fi
-if [ -n "$KAFKA_SASL_PASSWORD" ]; then
-    export KAFKA_PROPERTIES_SASL_PASSWORD="$KAFKA_SASL_PASSWORD"
+# Setup Kafka SSL certificates for mTLS
+if [ -n "$KAFKA_ACCESS_CERT" ] && [ -n "$KAFKA_ACCESS_KEY" ] && [ -n "$KAFKA_CA_CERT" ]; then
+    echo "Setting up Kafka SSL certificates..."
+    
+    CERTS_DIR="/tmp/certs"
+    mkdir -p "$CERTS_DIR"
+    chmod 700 "$CERTS_DIR"
+    
+    # Write certificates to files
+    echo "$KAFKA_ACCESS_CERT" > "$CERTS_DIR/kafka-client.crt"
+    echo "$KAFKA_ACCESS_KEY" > "$CERTS_DIR/kafka-client.key"
+    echo "$KAFKA_CA_CERT" > "$CERTS_DIR/kafka-ca.crt"
+    
+    # Set proper permissions
+    chmod 644 "$CERTS_DIR/kafka-client.crt" "$CERTS_DIR/kafka-ca.crt"
+    chmod 600 "$CERTS_DIR/kafka-client.key"
+    
+    # Create PKCS12 keystore from certificate and key
+    KEYSTORE_PATH="/tmp/kafka-client-keystore.p12"
+    KEYSTORE_PASS="changeit"
+    
+    openssl pkcs12 -export \
+        -in "$CERTS_DIR/kafka-client.crt" \
+        -inkey "$CERTS_DIR/kafka-client.key" \
+        -out "$KEYSTORE_PATH" \
+        -name kafka-client \
+        -passout pass:"$KEYSTORE_PASS" 2>&1 || {
+        echo "ERROR: Failed to create keystore"
+        exit 1
+    }
+    chmod 600 "$KEYSTORE_PATH"
+    export KAFKA_PROPERTIES_SSL_KEYSTORE_LOCATION="$KEYSTORE_PATH"
+    export KAFKA_PROPERTIES_SSL_KEYSTORE_PASSWORD="$KEYSTORE_PASS"
+    
+    # Create JKS truststore from CA certificate
+    TRUSTSTORE_PATH="/tmp/kafka-truststore.jks"
+    TRUSTSTORE_PASS="changeit"
+    
+    rm -f "$TRUSTSTORE_PATH"
+    keytool -import -trustcacerts -keystore "$TRUSTSTORE_PATH" -storepass "$TRUSTSTORE_PASS" \
+        -noprompt -alias "kafka-ca" -file "$CERTS_DIR/kafka-ca.crt" 2>&1 || {
+        echo "ERROR: Failed to create truststore"
+        exit 1
+    }
+    export KAFKA_PROPERTIES_SSL_TRUSTSTORE_LOCATION="$TRUSTSTORE_PATH"
+    export KAFKA_PROPERTIES_SSL_TRUSTSTORE_PASSWORD="$TRUSTSTORE_PASS"
+    
+    echo "Kafka certificates configured for mTLS"
+    echo "Keystore: $KAFKA_PROPERTIES_SSL_KEYSTORE_LOCATION"
+    echo "Truststore: $KAFKA_PROPERTIES_SSL_TRUSTSTORE_LOCATION"
 fi
 
 # Kafka configuration
 if [ -n "$KAFKA_BOOTSTRAP_SERVER" ]; then
-    echo "Kafka: $KAFKA_BOOTSTRAP_SERVER (SASL_SSL)"
+    echo "Kafka: $KAFKA_BOOTSTRAP_SERVER (mTLS)"
 fi
 
 # Generate system client secret if not provided (used for GMS authentication)

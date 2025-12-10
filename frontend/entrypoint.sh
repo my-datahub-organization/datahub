@@ -120,15 +120,43 @@ if [ -n "$OPENSEARCH_URI" ]; then
     echo "OpenSearch configured: host=$ELASTIC_CLIENT_HOST, port=$ELASTIC_CLIENT_PORT"
 fi
 
-# Build Kafka SASL JAAS config from individual credentials
-if [ -n "$KAFKA_SASL_USERNAME" ] && [ -n "$KAFKA_SASL_PASSWORD" ]; then
-    export KAFKA_PROPERTIES_SASL_JAAS_CONFIG="org.apache.kafka.common.security.plain.PlainLoginModule required username=\"$KAFKA_SASL_USERNAME\" password=\"$KAFKA_SASL_PASSWORD\";"
-    echo "Kafka SASL configured for user: $KAFKA_SASL_USERNAME"
-fi
-
-# Set truststore password (use a default if not provided)
-if [ -z "$KAFKA_PROPERTIES_SSL_TRUSTSTORE_PASSWORD" ]; then
-    export KAFKA_PROPERTIES_SSL_TRUSTSTORE_PASSWORD="changeit"
+# Setup Kafka SSL certificates for mTLS
+if [ -n "$KAFKA_ACCESS_CERT" ] && [ -n "$KAFKA_ACCESS_KEY" ] && [ -n "$KAFKA_CA_CERT" ]; then
+    CERTS_DIR="/tmp/certs"
+    mkdir -p "$CERTS_DIR"
+    chmod 700 "$CERTS_DIR"
+    
+    echo "Setting up Kafka SSL certificates..."
+    echo "$KAFKA_ACCESS_CERT" > "$CERTS_DIR/kafka-client.crt"
+    echo "$KAFKA_ACCESS_KEY" > "$CERTS_DIR/kafka-client.key"
+    echo "$KAFKA_CA_CERT" > "$CERTS_DIR/kafka-ca.crt"
+    chmod 600 "$CERTS_DIR/kafka-client.key"
+    
+    # Create PKCS12 keystore
+    KEYSTORE_PATH="/tmp/kafka-client-keystore.p12"
+    KEYSTORE_PASS="changeit"
+    openssl pkcs12 -export -in "$CERTS_DIR/kafka-client.crt" -inkey "$CERTS_DIR/kafka-client.key" \
+        -out "$KEYSTORE_PATH" -name kafka-client -passout "pass:$KEYSTORE_PASS" 2>&1 || {
+        echo "ERROR: Failed to create keystore"
+        exit 1
+    }
+    export KAFKA_PROPERTIES_SSL_KEYSTORE_LOCATION="$KEYSTORE_PATH"
+    export KAFKA_PROPERTIES_SSL_KEYSTORE_PASSWORD="$KEYSTORE_PASS"
+    export KAFKA_PROPERTIES_SSL_KEY_PASSWORD="$KEYSTORE_PASS"
+    
+    # Create JKS truststore
+    TRUSTSTORE_PATH="/tmp/kafka-truststore.jks"
+    TRUSTSTORE_PASS="changeit"
+    rm -f "$TRUSTSTORE_PATH"
+    keytool -import -trustcacerts -keystore "$TRUSTSTORE_PATH" -storepass "$TRUSTSTORE_PASS" \
+        -noprompt -alias "kafka-ca" -file "$CERTS_DIR/kafka-ca.crt" 2>&1 || {
+        echo "ERROR: Failed to create truststore"
+        exit 1
+    }
+    export KAFKA_PROPERTIES_SSL_TRUSTSTORE_LOCATION="$TRUSTSTORE_PATH"
+    export KAFKA_PROPERTIES_SSL_TRUSTSTORE_PASSWORD="$TRUSTSTORE_PASS"
+    
+    echo "Kafka certificates configured for mTLS"
 fi
 
 # Wait for all dependencies to be DNS-resolvable before proceeding
@@ -157,5 +185,15 @@ echo "Kafka Bootstrap: ${KAFKA_BOOTSTRAP_SERVER:-NOT SET}"
 echo "OpenSearch Host: ${ELASTIC_CLIENT_HOST:-NOT SET}:${ELASTIC_CLIENT_PORT:-NOT SET}"
 echo "======================================"
 
-# Execute the original entrypoint/command
-exec "$@"
+# Set JAVA_OPTS for Play Framework (similar to original start.sh)
+export JAVA_OPTS="${JAVA_MEMORY_OPTS:--Xms512m -Xmx1024m} \
+   -Dhttp.port=9002 \
+   -Dconfig.file=datahub-frontend/conf/application.conf \
+   -Djava.security.auth.login.config=datahub-frontend/conf/jaas.conf \
+   -Dlogback.configurationFile=datahub-frontend/conf/logback.xml \
+   -Dlogback.debug=false \
+   -Dpidfile.path=/dev/null"
+
+echo "Starting DataHub Frontend..."
+# Execute datahub-frontend directly
+exec /datahub-frontend/bin/datahub-frontend
