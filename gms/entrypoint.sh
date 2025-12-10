@@ -95,10 +95,10 @@ else
     echo "ERROR: DATAHUB_SECRET is NOT SET - this will cause authentication failures!"
 fi
 echo "METADATA_SERVICE_AUTH_ENABLED='${METADATA_SERVICE_AUTH_ENABLED:-NOT SET}'"
-if [ "${METADATA_SERVICE_AUTH_ENABLED:-false}" != "false" ]; then
-    echo "WARNING: METADATA_SERVICE_AUTH_ENABLED is not 'false' - current value: '${METADATA_SERVICE_AUTH_ENABLED}'"
+if [ "${METADATA_SERVICE_AUTH_ENABLED:-false}" = "true" ]; then
+    echo "✓ METADATA_SERVICE_AUTH_ENABLED is correctly set to 'true'"
 else
-    echo "✓ METADATA_SERVICE_AUTH_ENABLED is correctly set to 'false'"
+    echo "WARNING: METADATA_SERVICE_AUTH_ENABLED is not 'true' - current value: '${METADATA_SERVICE_AUTH_ENABLED}'"
 fi
 echo "AUTH_NATIVE_ENABLED='${AUTH_NATIVE_ENABLED:-NOT SET}'"
 echo "AUTH_GUEST_ENABLED='${AUTH_GUEST_ENABLED:-NOT SET}'"
@@ -334,14 +334,14 @@ fi
 echo "=== Configuration Complete ==="
 echo ""
 echo "=== Final Authentication Check ==="
-if [ -n "$DATAHUB_SECRET" ] && [ "${METADATA_SERVICE_AUTH_ENABLED:-false}" = "false" ]; then
+if [ -n "$DATAHUB_SECRET" ] && [ "${METADATA_SERVICE_AUTH_ENABLED:-false}" = "true" ]; then
     echo "✓ Authentication configuration is correct:"
     echo "  - DATAHUB_SECRET is set"
-    echo "  - METADATA_SERVICE_AUTH_ENABLED=false"
+    echo "  - METADATA_SERVICE_AUTH_ENABLED=true"
 else
     echo "✗ Authentication configuration issue detected:"
     [ -z "$DATAHUB_SECRET" ] && echo "  - DATAHUB_SECRET is NOT SET"
-    [ "${METADATA_SERVICE_AUTH_ENABLED:-false}" != "false" ] && echo "  - METADATA_SERVICE_AUTH_ENABLED is '${METADATA_SERVICE_AUTH_ENABLED:-NOT SET}' (should be 'false')"
+    [ "${METADATA_SERVICE_AUTH_ENABLED:-false}" != "true" ] && echo "  - METADATA_SERVICE_AUTH_ENABLED is '${METADATA_SERVICE_AUTH_ENABLED:-NOT SET}' (should be 'true')"
 fi
 echo "=================================="
 echo ""

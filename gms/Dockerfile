@@ -50,8 +50,8 @@ ENV INDEX_BUILDER_ENABLED=true
 ENV ALWAYS_EMIT_CHANGE_LOG=true
 
 # Authentication Configuration
-# Disable Metadata Service Authentication (use cookie-based auth instead)
-ENV METADATA_SERVICE_AUTH_ENABLED=false
+# Enable Metadata Service Authentication (required for session token endpoint)
+ENV METADATA_SERVICE_AUTH_ENABLED=true
 ENV AUTH_NATIVE_ENABLED=true
 ENV AUTH_GUEST_ENABLED=true
 ENV BOOTSTRAP_DEFAULT_ROOT_USER_ENABLED=true
