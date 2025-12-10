@@ -95,10 +95,10 @@ else
     echo "ERROR: DATAHUB_SECRET is NOT SET - this will cause authentication failures!"
 fi
 echo "METADATA_SERVICE_AUTH_ENABLED='${METADATA_SERVICE_AUTH_ENABLED:-NOT SET}'"
-if [ "${METADATA_SERVICE_AUTH_ENABLED:-false}" = "true" ]; then
-    echo "✓ METADATA_SERVICE_AUTH_ENABLED is correctly set to 'true'"
+if [ "${METADATA_SERVICE_AUTH_ENABLED:-false}" != "false" ]; then
+    echo "WARNING: METADATA_SERVICE_AUTH_ENABLED is not 'false' - current value: '${METADATA_SERVICE_AUTH_ENABLED}'"
 else
-    echo "WARNING: METADATA_SERVICE_AUTH_ENABLED is not 'true' - current value: '${METADATA_SERVICE_AUTH_ENABLED}'"
+    echo "✓ METADATA_SERVICE_AUTH_ENABLED is correctly set to 'false'"
 fi
 echo "AUTH_NATIVE_ENABLED='${AUTH_NATIVE_ENABLED:-NOT SET}'"
 echo "AUTH_GUEST_ENABLED='${AUTH_GUEST_ENABLED:-NOT SET}'"
@@ -331,26 +331,18 @@ else
     echo "Schema Registry: Using configured URL: $KAFKA_SCHEMAREGISTRY_URL"
 fi
 
-# Set DATAHUB_SYSTEM_CLIENT_SECRET from DATAHUB_SECRET if not provided
-# This is required for inter-service authentication when METADATA_SERVICE_AUTH_ENABLED=true
-if [ -z "$DATAHUB_SYSTEM_CLIENT_SECRET" ] && [ -n "$DATAHUB_SECRET" ]; then
-    export DATAHUB_SYSTEM_CLIENT_SECRET="$DATAHUB_SECRET"
-    echo "Set DATAHUB_SYSTEM_CLIENT_SECRET from DATAHUB_SECRET"
-fi
 
 echo "=== Configuration Complete ==="
 echo ""
 echo "=== Final Authentication Check ==="
-if [ -n "$DATAHUB_SECRET" ] && [ "${METADATA_SERVICE_AUTH_ENABLED:-false}" = "true" ]; then
+if [ -n "$DATAHUB_SECRET" ] && [ "${METADATA_SERVICE_AUTH_ENABLED:-false}" = "false" ]; then
     echo "✓ Authentication configuration is correct:"
     echo "  - DATAHUB_SECRET is set"
-    echo "  - METADATA_SERVICE_AUTH_ENABLED=true"
-    echo "  - DATAHUB_SYSTEM_CLIENT_ID=${DATAHUB_SYSTEM_CLIENT_ID:-__datahub_system}"
-    echo "  - DATAHUB_SYSTEM_CLIENT_SECRET is set: $([ -n "$DATAHUB_SYSTEM_CLIENT_SECRET" ] && echo 'YES' || echo 'NO')"
+    echo "  - METADATA_SERVICE_AUTH_ENABLED=false"
 else
     echo "✗ Authentication configuration issue detected:"
     [ -z "$DATAHUB_SECRET" ] && echo "  - DATAHUB_SECRET is NOT SET"
-    [ "${METADATA_SERVICE_AUTH_ENABLED:-false}" != "true" ] && echo "  - METADATA_SERVICE_AUTH_ENABLED is '${METADATA_SERVICE_AUTH_ENABLED:-NOT SET}' (should be 'true')"
+    [ "${METADATA_SERVICE_AUTH_ENABLED:-false}" != "false" ] && echo "  - METADATA_SERVICE_AUTH_ENABLED is '${METADATA_SERVICE_AUTH_ENABLED:-NOT SET}' (should be 'false')"
 fi
 echo "=================================="
 echo ""
