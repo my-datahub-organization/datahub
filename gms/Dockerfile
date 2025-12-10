@@ -22,60 +22,42 @@ ENV SKIP_POSTGRES_CHECK=true
 
 # PostgreSQL Configuration
 ENV EBEAN_DATASOURCE_DRIVER=org.postgresql.Driver
-# Auto-create tables if they don't exist
 ENV EBEAN_AUTOCREATE=true
-# Completely disable DDL file generation (container filesystem is read-only)
 ENV EBEAN_DDL_GENERATE=false
 ENV EBEAN_DDL_RUN=false
-ENV EBEAN_DDL_INIT_SQL=
-ENV EBEAN_DDL_SEED_SQL=
 
-# Kafka Configuration
-ENV KAFKA_AUTO_CREATE_TOPICS_ENABLED=true
-ENV SCHEMA_REGISTRY_TYPE=INTERNAL
-ENV KAFKA_SCHEMAREGISTRY_URL=http://localhost:8080/schema-registry/api/
-
-# Kafka SASL with SSL (required by Aiven Kafka)
-ENV SPRING_KAFKA_PROPERTIES_SECURITY_PROTOCOL=SASL_SSL
-ENV SPRING_KAFKA_PROPERTIES_SASL_MECHANISM=PLAIN
-# Disable hostname verification (Aiven uses internal hostnames)
+# Kafka Configuration - Certificate-based authentication (mTLS)
+ENV SPRING_KAFKA_PROPERTIES_SECURITY_PROTOCOL=SSL
 ENV SPRING_KAFKA_PROPERTIES_SSL_ENDPOINT_IDENTIFICATION_ALGORITHM=
-# Truststore is configured dynamically by entrypoint (fetches CA from Kafka server)
 ENV SPRING_KAFKA_PROPERTIES_SSL_TRUSTSTORE_TYPE=JKS
 
+# Schema Registry Configuration - Use GMS's built-in schema registry
+ENV SCHEMA_REGISTRY_TYPE=INTERNAL
+
 # OpenSearch Configuration
-ENV ELASTICSEARCH_PROTOCOL=https
-ENV ELASTICSEARCH_USE_SSL=true
 ENV ELASTICSEARCH_IMPLEMENTATION=opensearch
+ENV ELASTICSEARCH_USE_SSL=true
 ENV ELASTICSEARCH_SSL_PROTOCOL=TLSv1.2
+ENV ELASTICSEARCH_BUILD_INDICES_RETENTION_VALUE=30
 
 # Entity Registry Configuration
 ENV ENTITY_REGISTRY_CONFIG_PATH=/datahub/datahub-gms/resources/entity-registry.yml
 
-# Service Configuration
-ENV GRAPH_SERVICE_IMPL=elasticsearch
-ENV MAE_CONSUMER_ENABLED=true
-ENV MCE_CONSUMER_ENABLED=true
-ENV PE_CONSUMER_ENABLED=true
-ENV UI_INGESTION_ENABLED=true
-
-# Bootstrap Configuration - Required for index creation and system setup
+# Bootstrap Configuration
 ENV BOOTSTRAP_SYSTEM_UPDATE_ENABLED=true
-ENV DATAHUB_ANALYTICS_ENABLED=true
 ENV BOOTSTRAP_SYSTEM_UPDATE_WAIT_FOR_SYSTEM_UPDATE=false
-# Force reindex on startup if indices are missing
+ENV INDEX_BUILDER_ENABLED=true
 ENV ALWAYS_EMIT_CHANGE_LOG=true
 
-# Authentication disabled by default - can be enabled via environment variables if needed
-# ENV DATAHUB_SYSTEM_CLIENT_ID=__datahub_system
-# ENV DATAHUB_SYSTEM_CLIENT_SECRET=your-secret-here
-# ENV METADATA_SERVICE_AUTH_ENABLED=true
-# ENV DATAHUB_TOKEN_SERVICE_SIGNING_KEY=your-signing-key-here
-# ENV DATAHUB_TOKEN_SERVICE_SALT=your-salt-here
+# Authentication Configuration
+# Disable Metadata Service Authentication (use cookie-based auth instead)
+ENV METADATA_SERVICE_AUTH_ENABLED=false
+ENV AUTH_NATIVE_ENABLED=true
+ENV AUTH_GUEST_ENABLED=true
+ENV BOOTSTRAP_DEFAULT_ROOT_USER_ENABLED=true
 
-# JVM Settings - DataHub GMS needs adequate memory for bootstrap and index creation
-# SSL truststore is configured dynamically by entrypoint script
-ENV JAVA_OPTS="-Xms1024m -Xmx2048m -XX:+UseG1GC -XX:MaxGCPauseMillis=200"
+# Enable verbose authentication logging for debugging
+ENV AUTH_VERBOSE_LOGGING=true
 
 # Expose GMS port
 EXPOSE 8080
