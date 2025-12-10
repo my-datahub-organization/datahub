@@ -147,10 +147,16 @@ if [ -z "$DATAHUB_SYSTEM_CLIENT_ID" ]; then
     echo "Using default DATAHUB_SYSTEM_CLIENT_ID: __datahub_system"
 fi
 
-# Generate system client secret if not provided (used for GMS authentication)
+# Set system client secret if not provided (must match across all services)
+# Uses DATAHUB_SECRET as fallback since it's already shared across services
 if [ -z "$DATAHUB_SYSTEM_CLIENT_SECRET" ]; then
-    export DATAHUB_SYSTEM_CLIENT_SECRET="${DATAHUB_SECRET:-$(openssl rand -hex 32)}"
-    echo "Generated DATAHUB_SYSTEM_CLIENT_SECRET"
+    if [ -z "$DATAHUB_SECRET" ]; then
+        echo "ERROR: DATAHUB_SYSTEM_CLIENT_SECRET or DATAHUB_SECRET must be set"
+        echo "The system client secret must be shared across all services (frontend, gms, actions)"
+        exit 1
+    fi
+    export DATAHUB_SYSTEM_CLIENT_SECRET="$DATAHUB_SECRET"
+    echo "Using DATAHUB_SECRET as DATAHUB_SYSTEM_CLIENT_SECRET (shared across services)"
 fi
 
 # Wait for all dependencies to be DNS-resolvable before proceeding
