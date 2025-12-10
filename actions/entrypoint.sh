@@ -141,6 +141,12 @@ if [ -n "$KAFKA_BOOTSTRAP_SERVER" ]; then
     echo "Kafka: $KAFKA_BOOTSTRAP_SERVER (mTLS)"
 fi
 
+# Set system client ID if not provided (defaults to __datahub_system)
+if [ -z "$DATAHUB_SYSTEM_CLIENT_ID" ]; then
+    export DATAHUB_SYSTEM_CLIENT_ID="__datahub_system"
+    echo "Using default DATAHUB_SYSTEM_CLIENT_ID: __datahub_system"
+fi
+
 # Generate system client secret if not provided (used for GMS authentication)
 if [ -z "$DATAHUB_SYSTEM_CLIENT_SECRET" ]; then
     export DATAHUB_SYSTEM_CLIENT_SECRET="${DATAHUB_SECRET:-$(openssl rand -hex 32)}"
