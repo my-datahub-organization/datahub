@@ -23,6 +23,17 @@ echo "DATAHUB_GMS_URL='$DATAHUB_GMS_URL'"
 echo "DATAHUB_GMS_HOST='$DATAHUB_GMS_HOST'"
 echo "DATAHUB_GMS_PORT='$DATAHUB_GMS_PORT'"
 echo "DATAHUB_SECRET is set: $([ -n "$DATAHUB_SECRET" ] && echo 'YES' || echo 'NO')"
+if [ -n "$DATAHUB_SECRET" ]; then
+    echo "DATAHUB_SECRET value: ...${DATAHUB_SECRET: -3} (last 3 chars)"
+else
+    echo "ERROR: DATAHUB_SECRET is NOT SET - this will cause authentication failures!"
+fi
+echo "METADATA_SERVICE_AUTH_ENABLED='${METADATA_SERVICE_AUTH_ENABLED:-NOT SET}'"
+if [ "${METADATA_SERVICE_AUTH_ENABLED:-false}" != "false" ]; then
+    echo "WARNING: METADATA_SERVICE_AUTH_ENABLED is not 'false' - current value: '${METADATA_SERVICE_AUTH_ENABLED}'"
+else
+    echo "✓ METADATA_SERVICE_AUTH_ENABLED is correctly set to 'false'"
+fi
 echo "KAFKA_BOOTSTRAP_SERVER='$KAFKA_BOOTSTRAP_SERVER'"
 echo "OPENSEARCH_URI is set: $([ -n "$OPENSEARCH_URI" ] && echo 'YES' || echo 'NO')"
 echo "==================================="
@@ -183,6 +194,17 @@ echo "=== DataHub Frontend Configuration ==="
 echo "GMS Host: ${DATAHUB_GMS_HOST:-NOT SET}:${DATAHUB_GMS_PORT:-NOT SET}"
 echo "Kafka Bootstrap: ${KAFKA_BOOTSTRAP_SERVER:-NOT SET}"
 echo "OpenSearch Host: ${ELASTIC_CLIENT_HOST:-NOT SET}:${ELASTIC_CLIENT_PORT:-NOT SET}"
+echo ""
+echo "=== Final Authentication Check ==="
+if [ -n "$DATAHUB_SECRET" ] && [ "${METADATA_SERVICE_AUTH_ENABLED:-false}" = "false" ]; then
+    echo "✓ Authentication configuration is correct:"
+    echo "  - DATAHUB_SECRET is set"
+    echo "  - METADATA_SERVICE_AUTH_ENABLED=false"
+else
+    echo "✗ Authentication configuration issue detected:"
+    [ -z "$DATAHUB_SECRET" ] && echo "  - DATAHUB_SECRET is NOT SET"
+    [ "${METADATA_SERVICE_AUTH_ENABLED:-false}" != "false" ] && echo "  - METADATA_SERVICE_AUTH_ENABLED is '${METADATA_SERVICE_AUTH_ENABLED:-NOT SET}' (should be 'false')"
+fi
 echo "======================================"
 
 # Set JAVA_OPTS for Play Framework (similar to original start.sh)

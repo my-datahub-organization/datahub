@@ -86,6 +86,24 @@ echo "  KAFKA_BOOTSTRAP_SERVER set: $([ -n "$KAFKA_BOOTSTRAP_SERVER" ] && echo '
 echo "  KAFKA_ACCESS_CERT set: $([ -n "$KAFKA_ACCESS_CERT" ] && echo 'YES' || echo 'NO')"
 echo "  KAFKA_ACCESS_KEY set: $([ -n "$KAFKA_ACCESS_KEY" ] && echo 'YES' || echo 'NO')"
 echo "  KAFKA_CA_CERT set: $([ -n "$KAFKA_CA_CERT" ] && echo 'YES' || echo 'NO')"
+echo ""
+echo "=== Authentication Configuration Debug ==="
+echo "DATAHUB_SECRET is set: $([ -n "$DATAHUB_SECRET" ] && echo 'YES' || echo 'NO')"
+if [ -n "$DATAHUB_SECRET" ]; then
+    echo "DATAHUB_SECRET value: ...${DATAHUB_SECRET: -3} (last 3 chars)"
+else
+    echo "ERROR: DATAHUB_SECRET is NOT SET - this will cause authentication failures!"
+fi
+echo "METADATA_SERVICE_AUTH_ENABLED='${METADATA_SERVICE_AUTH_ENABLED:-NOT SET}'"
+if [ "${METADATA_SERVICE_AUTH_ENABLED:-false}" != "false" ]; then
+    echo "WARNING: METADATA_SERVICE_AUTH_ENABLED is not 'false' - current value: '${METADATA_SERVICE_AUTH_ENABLED}'"
+else
+    echo "✓ METADATA_SERVICE_AUTH_ENABLED is correctly set to 'false'"
+fi
+echo "AUTH_NATIVE_ENABLED='${AUTH_NATIVE_ENABLED:-NOT SET}'"
+echo "AUTH_GUEST_ENABLED='${AUTH_GUEST_ENABLED:-NOT SET}'"
+echo "========================================="
+echo ""
 
 # Function to write certificates to disk
 setup_certificates() {
@@ -314,6 +332,18 @@ else
 fi
 
 echo "=== Configuration Complete ==="
+echo ""
+echo "=== Final Authentication Check ==="
+if [ -n "$DATAHUB_SECRET" ] && [ "${METADATA_SERVICE_AUTH_ENABLED:-false}" = "false" ]; then
+    echo "✓ Authentication configuration is correct:"
+    echo "  - DATAHUB_SECRET is set"
+    echo "  - METADATA_SERVICE_AUTH_ENABLED=false"
+else
+    echo "✗ Authentication configuration issue detected:"
+    [ -z "$DATAHUB_SECRET" ] && echo "  - DATAHUB_SECRET is NOT SET"
+    [ "${METADATA_SERVICE_AUTH_ENABLED:-false}" != "false" ] && echo "  - METADATA_SERVICE_AUTH_ENABLED is '${METADATA_SERVICE_AUTH_ENABLED:-NOT SET}' (should be 'false')"
+fi
+echo "=================================="
 echo ""
 
 # Execute the original entrypoint/command
