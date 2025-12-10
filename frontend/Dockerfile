@@ -22,6 +22,10 @@ ENV DATAHUB_ANALYTICS_ENABLED=true
 ENV PAC4J_SESSIONSTORE_PROVIDER=PlayCacheSessionStore
 # Disable Metadata Service Authentication (use cookie-based auth instead)
 ENV METADATA_SERVICE_AUTH_ENABLED=false
+# System client credentials for authenticating frontend requests to GMS
+# Required when GMS has METADATA_SERVICE_AUTH_ENABLED=true
+ENV DATAHUB_SYSTEM_CLIENT_ID=__datahub_system
+# DATAHUB_SYSTEM_CLIENT_SECRET will be set from .env file (should match GMS)
 ENV AUTH_VERBOSE_LOGGING=true
 ENV GRAPHQL_VERBOSE_LOGGING=true
 

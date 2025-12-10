@@ -189,6 +189,13 @@ fi
 
 echo "=== All dependencies ready ==="
 
+# Set DATAHUB_SYSTEM_CLIENT_SECRET from DATAHUB_SECRET if not provided
+# This is required for frontend to authenticate to GMS when GMS has METADATA_SERVICE_AUTH_ENABLED=true
+if [ -z "$DATAHUB_SYSTEM_CLIENT_SECRET" ] && [ -n "$DATAHUB_SECRET" ]; then
+    export DATAHUB_SYSTEM_CLIENT_SECRET="$DATAHUB_SECRET"
+    echo "Set DATAHUB_SYSTEM_CLIENT_SECRET from DATAHUB_SECRET (for GMS authentication)"
+fi
+
 # Debug: print configured endpoints (without secrets)
 echo "=== DataHub Frontend Configuration ==="
 echo "GMS Host: ${DATAHUB_GMS_HOST:-NOT SET}:${DATAHUB_GMS_PORT:-NOT SET}"
@@ -200,6 +207,8 @@ if [ -n "$DATAHUB_SECRET" ] && [ "${METADATA_SERVICE_AUTH_ENABLED:-false}" = "fa
     echo "✓ Authentication configuration is correct:"
     echo "  - DATAHUB_SECRET is set"
     echo "  - METADATA_SERVICE_AUTH_ENABLED=false"
+    echo "  - DATAHUB_SYSTEM_CLIENT_ID=${DATAHUB_SYSTEM_CLIENT_ID:-__datahub_system}"
+    echo "  - DATAHUB_SYSTEM_CLIENT_SECRET is set: $([ -n "$DATAHUB_SYSTEM_CLIENT_SECRET" ] && echo 'YES' || echo 'NO')"
 else
     echo "✗ Authentication configuration issue detected:"
     [ -z "$DATAHUB_SECRET" ] && echo "  - DATAHUB_SECRET is NOT SET"

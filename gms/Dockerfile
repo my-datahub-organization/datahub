@@ -55,6 +55,9 @@ ENV METADATA_SERVICE_AUTH_ENABLED=true
 ENV AUTH_NATIVE_ENABLED=true
 ENV AUTH_GUEST_ENABLED=true
 ENV BOOTSTRAP_DEFAULT_ROOT_USER_ENABLED=true
+# System client credentials for inter-service authentication
+# DATAHUB_SYSTEM_CLIENT_SECRET will be set from .env file (should match frontend)
+ENV DATAHUB_SYSTEM_CLIENT_ID=__datahub_system
 
 # Enable verbose authentication logging for debugging
 ENV AUTH_VERBOSE_LOGGING=true

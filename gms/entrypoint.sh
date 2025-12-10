@@ -331,6 +331,13 @@ else
     echo "Schema Registry: Using configured URL: $KAFKA_SCHEMAREGISTRY_URL"
 fi
 
+# Set DATAHUB_SYSTEM_CLIENT_SECRET from DATAHUB_SECRET if not provided
+# This is required for inter-service authentication when METADATA_SERVICE_AUTH_ENABLED=true
+if [ -z "$DATAHUB_SYSTEM_CLIENT_SECRET" ] && [ -n "$DATAHUB_SECRET" ]; then
+    export DATAHUB_SYSTEM_CLIENT_SECRET="$DATAHUB_SECRET"
+    echo "Set DATAHUB_SYSTEM_CLIENT_SECRET from DATAHUB_SECRET"
+fi
+
 echo "=== Configuration Complete ==="
 echo ""
 echo "=== Final Authentication Check ==="
@@ -338,6 +345,8 @@ if [ -n "$DATAHUB_SECRET" ] && [ "${METADATA_SERVICE_AUTH_ENABLED:-false}" = "tr
     echo "✓ Authentication configuration is correct:"
     echo "  - DATAHUB_SECRET is set"
     echo "  - METADATA_SERVICE_AUTH_ENABLED=true"
+    echo "  - DATAHUB_SYSTEM_CLIENT_ID=${DATAHUB_SYSTEM_CLIENT_ID:-__datahub_system}"
+    echo "  - DATAHUB_SYSTEM_CLIENT_SECRET is set: $([ -n "$DATAHUB_SYSTEM_CLIENT_SECRET" ] && echo 'YES' || echo 'NO')"
 else
     echo "✗ Authentication configuration issue detected:"
     [ -z "$DATAHUB_SECRET" ] && echo "  - DATAHUB_SECRET is NOT SET"
