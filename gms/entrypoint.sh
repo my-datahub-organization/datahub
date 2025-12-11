@@ -172,8 +172,6 @@ fi
 
 # Parse OPENSEARCH_URI (format: https://user:pass@host:port)
 if [ -n "$OPENSEARCH_URI" ]; then
-    echo "DEBUG: Parsing OPENSEARCH_URI..."
-    
     # Get protocol (https or http)
     OS_PROTO="${OPENSEARCH_URI%%://*}"
     OS_URL_NO_PROTO="${OPENSEARCH_URI#*://}"
@@ -190,10 +188,6 @@ if [ -n "$OPENSEARCH_URI" ]; then
         export ELASTICSEARCH_SSL_PROTOCOL="TLSv1.2"
     fi
     
-    echo "DEBUG: ELASTICSEARCH_HOST='$ELASTICSEARCH_HOST'"
-    echo "DEBUG: ELASTICSEARCH_PORT='$ELASTICSEARCH_PORT'"
-    echo "DEBUG: ELASTICSEARCH_USERNAME='$ELASTICSEARCH_USERNAME'"
-    echo "DEBUG: ELASTICSEARCH_USE_SSL='$ELASTICSEARCH_USE_SSL'"
     echo "OpenSearch: $ELASTICSEARCH_HOST:$ELASTICSEARCH_PORT (SSL: ${ELASTICSEARCH_USE_SSL:-false})"
 else
     echo "WARNING: OPENSEARCH_URI is not set!"

@@ -111,6 +111,13 @@ else
 fi
 GMS_PROTOCOL="$GMS_PROTO"
 
+# Set DATAHUB_GMS_USE_SSL based on protocol
+if [ "$GMS_PROTOCOL" = "https" ]; then
+    export DATAHUB_GMS_USE_SSL="true"
+else
+    export DATAHUB_GMS_USE_SSL="false"
+fi
+
 # Unset any existing values (from Dockerfile defaults or Docker Compose) and set the parsed values
 unset DATAHUB_GMS_HOST DATAHUB_GMS_PORT DATAHUB_GMS_PROTOCOL
 export DATAHUB_GMS_HOST="$GMS_HOST"
@@ -184,15 +191,17 @@ echo "=== Waiting for dependencies ==="
 # Wait for GMS to be ready
 wait_for_gms "$DATAHUB_GMS_URL" || echo "Continuing anyway..."
 
-# Wait for OpenSearch
+# Wait for OpenSearch (non-blocking - OpenSearch is optional for frontend)
+# Use shorter timeout (2 attempts = 1 minute) since OpenSearch is optional
 if [ -n "$ELASTIC_CLIENT_HOST" ]; then
-    wait_for_dns "$ELASTIC_CLIENT_HOST" || echo "Continuing anyway..."
+    wait_for_dns "$ELASTIC_CLIENT_HOST" 2 || echo "WARNING: OpenSearch DNS resolution failed after 1 minute, continuing anyway (OpenSearch is optional for frontend)..."
 fi
 
-# Wait for Kafka
+# Wait for Kafka (non-blocking - Kafka is optional for frontend)
+# Use shorter timeout (2 attempts = 1 minute) since Kafka is optional
 if [ -n "$KAFKA_BOOTSTRAP_SERVER" ]; then
     KAFKA_HOST="${KAFKA_BOOTSTRAP_SERVER%%:*}"
-    wait_for_dns "$KAFKA_HOST" || echo "Continuing anyway..."
+    wait_for_dns "$KAFKA_HOST" 2 || echo "WARNING: Kafka DNS resolution failed after 1 minute, continuing anyway (Kafka is optional for frontend)..."
 fi
 
 echo "=== All dependencies ready ==="
@@ -225,6 +234,9 @@ fi
 echo "======================================"
 
 # Set JAVA_OPTS for Play Framework (similar to original start.sh)
+# Note: We don't set METADATA_SERVICE_AUTH_ENABLED as a Java system property here
+# because application.conf uses ${?METADATA_SERVICE_AUTH_ENABLED} which reads from environment variables
+# The environment variable is already set and will be passed via exec env below
 export JAVA_OPTS="${JAVA_MEMORY_OPTS:--Xms512m -Xmx1024m} \
    -Dhttp.port=9002 \
    -Dconfig.file=datahub-frontend/conf/application.conf \
@@ -234,11 +246,34 @@ export JAVA_OPTS="${JAVA_MEMORY_OPTS:--Xms512m -Xmx1024m} \
    -Dpidfile.path=/dev/null"
 
 echo "Starting DataHub Frontend..."
-echo "Final environment check - DATAHUB_GMS_HOST=$DATAHUB_GMS_HOST, DATAHUB_GMS_PORT=$DATAHUB_GMS_PORT"
+echo "Final environment check - DATAHUB_GMS_HOST=$DATAHUB_GMS_HOST, DATAHUB_GMS_PORT=$DATAHUB_GMS_PORT, DATAHUB_GMS_USE_SSL=$DATAHUB_GMS_USE_SSL"
+echo "METADATA_SERVICE_AUTH_ENABLED=${METADATA_SERVICE_AUTH_ENABLED:-false}"
+echo "Constructed GMS URL: $DATAHUB_GMS_PROTOCOL://$DATAHUB_GMS_HOST:$DATAHUB_GMS_PORT"
+echo "Note: When METADATA_SERVICE_AUTH_ENABLED=false, frontend should NOT call generateSessionTokenForUser endpoint"
 
-# Execute datahub-frontend with explicit environment variables to ensure they're available
-# This ensures the parsed values override any Docker Compose defaults
-exec env DATAHUB_GMS_HOST="$DATAHUB_GMS_HOST" \
-         DATAHUB_GMS_PORT="$DATAHUB_GMS_PORT" \
-         DATAHUB_GMS_PROTOCOL="$DATAHUB_GMS_PROTOCOL" \
-         /datahub-frontend/bin/datahub-frontend
+# For Play Framework's ${?VAR} syntax:
+# - If VAR is unset, the config key is omitted and defaults to false (as per comment in application.conf)
+# - If VAR is set to "false" (string), Play Framework reads it as the string "false", not boolean false
+# So we unset it when we want false, and only set it when we want true
+if [ "${METADATA_SERVICE_AUTH_ENABLED:-false}" = "false" ]; then
+    # Unset the variable so Play Framework's ${?VAR} will omit the config key, defaulting to false
+    unset METADATA_SERVICE_AUTH_ENABLED
+    echo "Unset METADATA_SERVICE_AUTH_ENABLED to let application.conf default to false"
+    # Build exec command without METADATA_SERVICE_AUTH_ENABLED
+    exec env DATAHUB_GMS_HOST="$DATAHUB_GMS_HOST" \
+             DATAHUB_GMS_PORT="$DATAHUB_GMS_PORT" \
+             DATAHUB_GMS_PROTOCOL="$DATAHUB_GMS_PROTOCOL" \
+             DATAHUB_GMS_USE_SSL="$DATAHUB_GMS_USE_SSL" \
+             /datahub-frontend/bin/datahub-frontend
+else
+    # Keep it set for true
+    export METADATA_SERVICE_AUTH_ENABLED="$METADATA_SERVICE_AUTH_ENABLED"
+    echo "METADATA_SERVICE_AUTH_ENABLED is set to: $METADATA_SERVICE_AUTH_ENABLED"
+    # Build exec command with METADATA_SERVICE_AUTH_ENABLED
+    exec env DATAHUB_GMS_HOST="$DATAHUB_GMS_HOST" \
+             DATAHUB_GMS_PORT="$DATAHUB_GMS_PORT" \
+             DATAHUB_GMS_PROTOCOL="$DATAHUB_GMS_PROTOCOL" \
+             DATAHUB_GMS_USE_SSL="$DATAHUB_GMS_USE_SSL" \
+             METADATA_SERVICE_AUTH_ENABLED="$METADATA_SERVICE_AUTH_ENABLED" \
+             /datahub-frontend/bin/datahub-frontend
+fi

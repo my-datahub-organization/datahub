@@ -91,8 +91,6 @@ setup_certificates() {
 
 # Parse DATABASE_URL (format: postgres://user:pass@host:port/dbname?sslmode=require)
 if [ -n "${DATABASE_URL:-}" ]; then
-    echo "DEBUG: Parsing DATABASE_URL..."
-    
     DB_URL_NO_PROTO="${DATABASE_URL#*://}"
     DB_USERPASS="${DB_URL_NO_PROTO%%@*}"
     export EBEAN_DATASOURCE_USERNAME="${DB_USERPASS%%:*}"
@@ -104,9 +102,6 @@ if [ -n "${DATABASE_URL:-}" ]; then
     DB_DBNAME="${DB_DBNAME_QUERY%%\?*}"
     export EBEAN_DATASOURCE_URL="jdbc:postgresql://${DB_HOSTPORT}/${DB_DBNAME}?sslmode=require"
     
-    echo "DEBUG: EBEAN_DATASOURCE_URL='$EBEAN_DATASOURCE_URL'"
-    echo "DEBUG: EBEAN_DATASOURCE_HOST='$EBEAN_DATASOURCE_HOST'"
-    echo "DEBUG: EBEAN_DATASOURCE_USERNAME='$EBEAN_DATASOURCE_USERNAME'"
     echo "PostgreSQL: $EBEAN_DATASOURCE_HOST"
 else
     echo "ERROR: DATABASE_URL is not set!"
@@ -115,8 +110,6 @@ fi
 
 # Parse OPENSEARCH_URI (format: https://user:pass@host:port)
 if [ -n "${OPENSEARCH_URI:-}" ]; then
-    echo "DEBUG: Parsing OPENSEARCH_URI..."
-    
     # Get protocol (https or http)
     OS_PROTO="${OPENSEARCH_URI%%://*}"
     OS_URL_NO_PROTO="${OPENSEARCH_URI#*://}"
@@ -136,10 +129,6 @@ if [ -n "${OPENSEARCH_URI:-}" ]; then
         export ELASTICSEARCH_USE_SSL="false"
     fi
     
-    echo "DEBUG: ELASTICSEARCH_HOST='$ELASTICSEARCH_HOST'"
-    echo "DEBUG: ELASTICSEARCH_PORT='$ELASTICSEARCH_PORT'"
-    echo "DEBUG: ELASTICSEARCH_USERNAME='$ELASTICSEARCH_USERNAME'"
-    echo "DEBUG: ELASTICSEARCH_USE_SSL='$ELASTICSEARCH_USE_SSL'"
     echo "OpenSearch: $ELASTICSEARCH_HOST:$ELASTICSEARCH_PORT (SSL: ${ELASTICSEARCH_USE_SSL:-false})"
 else
     echo "ERROR: OPENSEARCH_URI is not set!"
