@@ -13,10 +13,6 @@ USER datahub
 # Copy entrypoint script that parses connection string env vars
 COPY entrypoint.sh /entrypoint.sh
 
-# GMS Connection (overridden by entrypoint from DATAHUB_GMS_URL)
-ENV DATAHUB_GMS_HOST=host.docker.internal
-ENV DATAHUB_GMS_PORT=8080
-
 # Authentication Configuration
 ENV DATAHUB_ANALYTICS_ENABLED=true
 ENV PAC4J_SESSIONSTORE_PROVIDER=PlayCacheSessionStore

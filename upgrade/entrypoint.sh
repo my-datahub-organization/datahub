@@ -92,7 +92,6 @@ setup_certificates() {
 # Parse DATABASE_URL (format: postgres://user:pass@host:port/dbname?sslmode=require)
 if [ -n "${DATABASE_URL:-}" ]; then
     echo "DEBUG: Parsing DATABASE_URL..."
-    echo "DEBUG: DATABASE_URL='$DATABASE_URL'"
     
     DB_URL_NO_PROTO="${DATABASE_URL#*://}"
     DB_USERPASS="${DB_URL_NO_PROTO%%@*}"
@@ -117,7 +116,6 @@ fi
 # Parse OPENSEARCH_URI (format: https://user:pass@host:port)
 if [ -n "${OPENSEARCH_URI:-}" ]; then
     echo "DEBUG: Parsing OPENSEARCH_URI..."
-    echo "DEBUG: OPENSEARCH_URI='$OPENSEARCH_URI'"
     
     # Get protocol (https or http)
     OS_PROTO="${OPENSEARCH_URI%%://*}"

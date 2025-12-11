@@ -93,24 +93,32 @@ wait_for_gms() {
 }
 
 # Parse DATAHUB_GMS_URL (format: http://host:port or https://host:port)
+# This is the single source of truth - we derive HOST and PORT from URL
 GMS_PROTO="${DATAHUB_GMS_URL%%://*}"
 GMS_URL_NO_PROTO="${DATAHUB_GMS_URL#*://}"
 GMS_HOSTPORT="${GMS_URL_NO_PROTO%%/*}"
 
 if [[ "$GMS_HOSTPORT" == *":"* ]]; then
-    export DATAHUB_GMS_HOST="${GMS_HOSTPORT%%:*}"
-    export DATAHUB_GMS_PORT="${GMS_HOSTPORT#*:}"
+    GMS_HOST="${GMS_HOSTPORT%%:*}"
+    GMS_PORT="${GMS_HOSTPORT#*:}"
 else
-    export DATAHUB_GMS_HOST="$GMS_HOSTPORT"
+    GMS_HOST="$GMS_HOSTPORT"
     if [ "$GMS_PROTO" = "https" ]; then
-        export DATAHUB_GMS_PORT="443"
+        GMS_PORT="443"
     else
-        export DATAHUB_GMS_PORT="80"
+        GMS_PORT="80"
     fi
 fi
-export DATAHUB_GMS_PROTOCOL="$GMS_PROTO"
+GMS_PROTOCOL="$GMS_PROTO"
+
+# Unset any existing values (from Dockerfile defaults or Docker Compose) and set the parsed values
+unset DATAHUB_GMS_HOST DATAHUB_GMS_PORT DATAHUB_GMS_PROTOCOL
+export DATAHUB_GMS_HOST="$GMS_HOST"
+export DATAHUB_GMS_PORT="$GMS_PORT"
+export DATAHUB_GMS_PROTOCOL="$GMS_PROTOCOL"
 
 echo "GMS: $DATAHUB_GMS_PROTOCOL://$DATAHUB_GMS_HOST:$DATAHUB_GMS_PORT"
+echo "Parsed from DATAHUB_GMS_URL: DATAHUB_GMS_HOST=$DATAHUB_GMS_HOST, DATAHUB_GMS_PORT=$DATAHUB_GMS_PORT"
 
 # Parse OPENSEARCH_URI (format: https://user:pass@host:port)
 # Frontend uses ELASTIC_CLIENT_* variables
@@ -226,5 +234,11 @@ export JAVA_OPTS="${JAVA_MEMORY_OPTS:--Xms512m -Xmx1024m} \
    -Dpidfile.path=/dev/null"
 
 echo "Starting DataHub Frontend..."
-# Execute datahub-frontend directly
-exec /datahub-frontend/bin/datahub-frontend
+echo "Final environment check - DATAHUB_GMS_HOST=$DATAHUB_GMS_HOST, DATAHUB_GMS_PORT=$DATAHUB_GMS_PORT"
+
+# Execute datahub-frontend with explicit environment variables to ensure they're available
+# This ensures the parsed values override any Docker Compose defaults
+exec env DATAHUB_GMS_HOST="$DATAHUB_GMS_HOST" \
+         DATAHUB_GMS_PORT="$DATAHUB_GMS_PORT" \
+         DATAHUB_GMS_PROTOCOL="$DATAHUB_GMS_PROTOCOL" \
+         /datahub-frontend/bin/datahub-frontend

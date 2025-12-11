@@ -173,7 +173,6 @@ fi
 # Parse OPENSEARCH_URI (format: https://user:pass@host:port)
 if [ -n "$OPENSEARCH_URI" ]; then
     echo "DEBUG: Parsing OPENSEARCH_URI..."
-    echo "DEBUG: OPENSEARCH_URI='$OPENSEARCH_URI'"
     
     # Get protocol (https or http)
     OS_PROTO="${OPENSEARCH_URI%%://*}"
