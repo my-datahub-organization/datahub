@@ -49,14 +49,8 @@ ENV BOOTSTRAP_SYSTEM_UPDATE_WAIT_FOR_SYSTEM_UPDATE=false
 ENV INDEX_BUILDER_ENABLED=true
 ENV ALWAYS_EMIT_CHANGE_LOG=true
 
-# Authentication Configuration
-# Disable Metadata Service Authentication (use cookie-based auth instead)
-ENV METADATA_SERVICE_AUTH_ENABLED=false
-ENV AUTH_NATIVE_ENABLED=true
-ENV AUTH_GUEST_ENABLED=true
-ENV BOOTSTRAP_DEFAULT_ROOT_USER_ENABLED=true
-
-# Enable verbose authentication logging for debugging
+# Authentication Configuration - MUST be provided via environment variables from .env
+# Do NOT set defaults here - they must be explicitly provided via docker-compose
 ENV AUTH_VERBOSE_LOGGING=true
 
 # Expose GMS port

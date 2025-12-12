@@ -13,15 +13,9 @@ USER datahub
 # Copy entrypoint script that parses connection string env vars
 COPY entrypoint.sh /entrypoint.sh
 
-# Authentication Configuration
+# Authentication Configuration - MUST be provided via environment variables from .env
 ENV DATAHUB_ANALYTICS_ENABLED=true
 ENV PAC4J_SESSIONSTORE_PROVIDER=PlayCacheSessionStore
-# Disable Metadata Service Authentication (use cookie-based auth instead)
-ENV METADATA_SERVICE_AUTH_ENABLED=false
-# System client credentials for authenticating frontend requests to GMS
-# Required when GMS has METADATA_SERVICE_AUTH_ENABLED=true
-ENV DATAHUB_SYSTEM_CLIENT_ID=__datahub_system
-# DATAHUB_SYSTEM_CLIENT_SECRET will be set from .env file (should match GMS)
 ENV AUTH_VERBOSE_LOGGING=true
 ENV GRAPHQL_VERBOSE_LOGGING=true
 
@@ -40,3 +34,4 @@ EXPOSE 9002
 
 # Use entrypoint to parse connection string env vars into component vars
 ENTRYPOINT ["/bin/bash", "/entrypoint.sh"]
+CMD []

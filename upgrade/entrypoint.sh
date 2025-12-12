@@ -6,6 +6,31 @@ set -e
 
 echo "=== DataHub Upgrade Job Entrypoint Starting ==="
 
+# Validate required authentication environment variables from .env
+if [ -z "${METADATA_SERVICE_AUTH_ENABLED:-}" ]; then
+    echo "ERROR: METADATA_SERVICE_AUTH_ENABLED must be either 'true' or 'false', got: '${METADATA_SERVICE_AUTH_ENABLED}'"
+    exit 1
+fi
+
+if [ "${METADATA_SERVICE_AUTH_ENABLED}" = "true" ]; then
+    if [ -z "${DATAHUB_SYSTEM_CLIENT_ID:-}" ]; then
+        echo "ERROR: DATAHUB_SYSTEM_CLIENT_ID must be set when METADATA_SERVICE_AUTH_ENABLED=true"
+        exit 1
+    fi
+    if [ -z "${DATAHUB_SYSTEM_CLIENT_SECRET:-}" ]; then
+        echo "ERROR: DATAHUB_SYSTEM_CLIENT_SECRET must be set when METADATA_SERVICE_AUTH_ENABLED=true"
+        exit 1
+    fi
+    echo "✓ System client credentials are set (auth enabled)"
+else
+    # If auth is disabled, unset system client credentials
+    unset DATAHUB_SYSTEM_CLIENT_ID
+    unset DATAHUB_SYSTEM_CLIENT_SECRET
+    echo "✓ System client credentials unset (auth disabled)"
+fi
+
+echo ""
+
 # Debug: show what env vars we received
 echo "DEBUG: Environment variables from docker-compose:"
 echo "  DATABASE_URL set: $([ -n "${DATABASE_URL:-}" ] && echo 'YES' || echo 'NO')"
@@ -164,9 +189,25 @@ if [ -z "${KAFKA_BOOTSTRAP_SERVER:-}" ]; then
     exit 1
 fi
 
+# Disable authentication for upgrade job (required for SystemUpdate to work)
+export METADATA_SERVICE_AUTH_ENABLED=false
+export AUTH_NATIVE_ENABLED=false
+export AUTH_GUEST_ENABLED=false
+
+# Unset system client credentials to ensure no auth is attempted
+unset DATAHUB_SYSTEM_CLIENT_ID
+unset DATAHUB_SYSTEM_CLIENT_SECRET
+
 echo "=== Configuration Complete ==="
 echo ""
 echo "Starting upgrade job..."
+echo ""
+echo "=== FINAL ENVIRONMENT CHECK ==="
+echo "METADATA_SERVICE_AUTH_ENABLED=${METADATA_SERVICE_AUTH_ENABLED}"
+echo "AUTH_NATIVE_ENABLED=${AUTH_NATIVE_ENABLED}"
+echo "AUTH_GUEST_ENABLED=${AUTH_GUEST_ENABLED}"
+echo "================================"
+echo ""
 
 # Execute the upgrade job
 exec "$@"

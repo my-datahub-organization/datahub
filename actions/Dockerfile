@@ -18,6 +18,7 @@ RUN chmod +x /entrypoint.sh
 
 USER datahub
 
+# Authentication Configuration - MUST be provided via environment variables from .env
 # GMS Connection (overridden by entrypoint from DATAHUB_GMS_URL)
 ENV DATAHUB_GMS_HOST=host.docker.internal
 ENV DATAHUB_GMS_PORT=8080

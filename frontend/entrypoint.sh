@@ -29,13 +29,34 @@ else
     echo "ERROR: DATAHUB_SECRET is NOT SET - this will cause authentication failures!"
 fi
 echo "METADATA_SERVICE_AUTH_ENABLED='${METADATA_SERVICE_AUTH_ENABLED:-NOT SET}'"
-if [ "${METADATA_SERVICE_AUTH_ENABLED:-false}" != "false" ]; then
-    echo "WARNING: METADATA_SERVICE_AUTH_ENABLED is not 'false' - current value: '${METADATA_SERVICE_AUTH_ENABLED}'"
-else
-    echo "✓ METADATA_SERVICE_AUTH_ENABLED is correctly set to 'false'"
-fi
 echo "KAFKA_BOOTSTRAP_SERVER='$KAFKA_BOOTSTRAP_SERVER'"
 echo "OPENSEARCH_URI is set: $([ -n "$OPENSEARCH_URI" ] && echo 'YES' || echo 'NO')"
+
+# Validate required authentication environment variables from .env
+if [ -z "${METADATA_SERVICE_AUTH_ENABLED:-}" ]; then
+    echo "ERROR: METADATA_SERVICE_AUTH_ENABLED must be either 'true' or 'false', got: '${METADATA_SERVICE_AUTH_ENABLED}'"
+    exit 1
+fi
+
+if [ "${METADATA_SERVICE_AUTH_ENABLED}" = "true" ]; then
+    if [ -z "${DATAHUB_SYSTEM_CLIENT_ID:-}" ]; then
+        echo "ERROR: DATAHUB_SYSTEM_CLIENT_ID must be set when METADATA_SERVICE_AUTH_ENABLED=true"
+        exit 1
+    fi
+    if [ -z "${DATAHUB_SYSTEM_CLIENT_SECRET:-}" ]; then
+        echo "ERROR: DATAHUB_SYSTEM_CLIENT_SECRET must be set when METADATA_SERVICE_AUTH_ENABLED=true"
+        exit 1
+    fi
+    echo "✓ System client credentials are set (auth enabled)"
+else
+    # If auth is disabled, unset system client credentials
+    unset DATAHUB_SYSTEM_CLIENT_ID
+    unset DATAHUB_SYSTEM_CLIENT_SECRET
+    echo "✓ System client credentials unset (auth disabled)"
+fi
+
+echo ""
+
 echo "==================================="
 
 # Require DATAHUB_GMS_URL - must be set manually
@@ -234,16 +255,19 @@ fi
 echo "======================================"
 
 # Set JAVA_OPTS for Play Framework (similar to original start.sh)
-# Note: We don't set METADATA_SERVICE_AUTH_ENABLED as a Java system property here
-# because application.conf uses ${?METADATA_SERVICE_AUTH_ENABLED} which reads from environment variables
-# The environment variable is already set and will be passed via exec env below
+# Pass GMS connection variables as Java system properties as a backup/guarantee
+# This ensures Play Framework has access to these values even if environment vars aren't inherited
 export JAVA_OPTS="${JAVA_MEMORY_OPTS:--Xms512m -Xmx1024m} \
    -Dhttp.port=9002 \
    -Dconfig.file=datahub-frontend/conf/application.conf \
    -Djava.security.auth.login.config=datahub-frontend/conf/jaas.conf \
    -Dlogback.configurationFile=datahub-frontend/conf/logback.xml \
    -Dlogback.debug=false \
-   -Dpidfile.path=/dev/null"
+   -Dpidfile.path=/dev/null \
+   -DDATAHUB_GMS_HOST=$DATAHUB_GMS_HOST \
+   -DDATAHUB_GMS_PORT=$DATAHUB_GMS_PORT \
+   -DDATAHUB_GMS_PROTOCOL=$DATAHUB_GMS_PROTOCOL \
+   -DDATAHUB_GMS_USE_SSL=$DATAHUB_GMS_USE_SSL"
 
 echo "Starting DataHub Frontend..."
 echo "Final environment check - DATAHUB_GMS_HOST=$DATAHUB_GMS_HOST, DATAHUB_GMS_PORT=$DATAHUB_GMS_PORT, DATAHUB_GMS_USE_SSL=$DATAHUB_GMS_USE_SSL"
@@ -259,21 +283,30 @@ if [ "${METADATA_SERVICE_AUTH_ENABLED:-false}" = "false" ]; then
     # Unset the variable so Play Framework's ${?VAR} will omit the config key, defaulting to false
     unset METADATA_SERVICE_AUTH_ENABLED
     echo "Unset METADATA_SERVICE_AUTH_ENABLED to let application.conf default to false"
-    # Build exec command without METADATA_SERVICE_AUTH_ENABLED
-    exec env DATAHUB_GMS_HOST="$DATAHUB_GMS_HOST" \
-             DATAHUB_GMS_PORT="$DATAHUB_GMS_PORT" \
-             DATAHUB_GMS_PROTOCOL="$DATAHUB_GMS_PROTOCOL" \
-             DATAHUB_GMS_USE_SSL="$DATAHUB_GMS_USE_SSL" \
-             /datahub-frontend/bin/datahub-frontend
 else
     # Keep it set for true
     export METADATA_SERVICE_AUTH_ENABLED="$METADATA_SERVICE_AUTH_ENABLED"
     echo "METADATA_SERVICE_AUTH_ENABLED is set to: $METADATA_SERVICE_AUTH_ENABLED"
-    # Build exec command with METADATA_SERVICE_AUTH_ENABLED
-    exec env DATAHUB_GMS_HOST="$DATAHUB_GMS_HOST" \
-             DATAHUB_GMS_PORT="$DATAHUB_GMS_PORT" \
-             DATAHUB_GMS_PROTOCOL="$DATAHUB_GMS_PROTOCOL" \
-             DATAHUB_GMS_USE_SSL="$DATAHUB_GMS_USE_SSL" \
-             METADATA_SERVICE_AUTH_ENABLED="$METADATA_SERVICE_AUTH_ENABLED" \
-             /datahub-frontend/bin/datahub-frontend
+fi
+
+# The GMS variables have already been exported in the parsing section (lines ~115-145)
+# They should be in the environment: DATAHUB_GMS_HOST, DATAHUB_GMS_PORT, DATAHUB_GMS_PROTOCOL, DATAHUB_GMS_USE_SSL
+
+# Verify they're present for debugging
+echo "Pre-exec GMS configuration:"
+echo "  DATAHUB_GMS_HOST=${DATAHUB_GMS_HOST:-NOT SET}"
+echo "  DATAHUB_GMS_PORT=${DATAHUB_GMS_PORT:-NOT SET}"
+echo "  DATAHUB_GMS_PROTOCOL=${DATAHUB_GMS_PROTOCOL:-NOT SET}"
+echo "  DATAHUB_GMS_USE_SSL=${DATAHUB_GMS_USE_SSL:-NOT SET}"
+
+# The Play Framework wrapper script doesn't preserve environment vars passed via exec
+# We need to pass them as Java system properties to guarantee they reach the JVM
+# These are read by Play's application.conf via ${?VAR} syntax after being converted from properties
+
+if [ $# -eq 0 ]; then
+    # Modify JAVA_OPTS to include all necessary properties  
+    # Already done above around line 265, so just exec the binary
+    exec /datahub-frontend/bin/datahub-frontend
+else
+    exec "$@"
 fi

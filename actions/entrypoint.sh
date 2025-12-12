@@ -6,6 +6,31 @@ set -e
 
 echo "=== DataHub Actions Entrypoint Starting ==="
 
+# Validate required authentication environment variables from .env
+if [ -z "${METADATA_SERVICE_AUTH_ENABLED:-}" ]; then
+    echo "ERROR: METADATA_SERVICE_AUTH_ENABLED must be either 'true' or 'false', got: '${METADATA_SERVICE_AUTH_ENABLED}'"
+    exit 1
+fi
+
+if [ "${METADATA_SERVICE_AUTH_ENABLED}" = "true" ]; then
+    if [ -z "${DATAHUB_SYSTEM_CLIENT_ID:-}" ]; then
+        echo "ERROR: DATAHUB_SYSTEM_CLIENT_ID must be set when METADATA_SERVICE_AUTH_ENABLED=true"
+        exit 1
+    fi
+    if [ -z "${DATAHUB_SYSTEM_CLIENT_SECRET:-}" ]; then
+        echo "ERROR: DATAHUB_SYSTEM_CLIENT_SECRET must be set when METADATA_SERVICE_AUTH_ENABLED=true"
+        exit 1
+    fi
+    echo "✓ System client credentials are set (auth enabled)"
+else
+    # If auth is disabled, unset system client credentials
+    unset DATAHUB_SYSTEM_CLIENT_ID
+    unset DATAHUB_SYSTEM_CLIENT_SECRET
+    echo "✓ System client credentials unset (auth disabled)"
+fi
+
+echo ""
+
 # Require DATAHUB_GMS_URL - must be set manually
 if [ -z "$DATAHUB_GMS_URL" ]; then
     echo "ERROR: DATAHUB_GMS_URL is required but not set"

@@ -24,10 +24,14 @@ ENV SKIP_POSTGRES_CHECK=true
 # PostgreSQL Configuration
 ENV EBEAN_DATASOURCE_DRIVER=org.postgresql.Driver
 
+# Authentication Configuration - MUST be provided via environment variables from .env
 # Kafka Configuration - Certificate-based authentication (mTLS)
 ENV SPRING_KAFKA_PROPERTIES_SECURITY_PROTOCOL=SSL
 ENV SPRING_KAFKA_PROPERTIES_SSL_ENDPOINT_IDENTIFICATION_ALGORITHM=
 ENV SPRING_KAFKA_PROPERTIES_SSL_TRUSTSTORE_TYPE=JKS
+
+# Schema Registry Configuration - Use GMS's built-in schema registry
+ENV SCHEMA_REGISTRY_TYPE=INTERNAL
 
 # OpenSearch Configuration
 ENV ELASTICSEARCH_IMPLEMENTATION=opensearch

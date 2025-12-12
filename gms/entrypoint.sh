@@ -95,11 +95,34 @@ else
     echo "ERROR: DATAHUB_SECRET is NOT SET - this will cause authentication failures!"
 fi
 echo "METADATA_SERVICE_AUTH_ENABLED='${METADATA_SERVICE_AUTH_ENABLED:-NOT SET}'"
-if [ "${METADATA_SERVICE_AUTH_ENABLED:-false}" != "false" ]; then
-    echo "WARNING: METADATA_SERVICE_AUTH_ENABLED is not 'false' - current value: '${METADATA_SERVICE_AUTH_ENABLED}'"
-else
-    echo "✓ METADATA_SERVICE_AUTH_ENABLED is correctly set to 'false'"
+echo "DATAHUB_SYSTEM_CLIENT_ID set: $([ -n "${DATAHUB_SYSTEM_CLIENT_ID:-}" ] && echo 'YES' || echo 'NO')"
+echo "DATAHUB_SYSTEM_CLIENT_SECRET set: $([ -n "${DATAHUB_SYSTEM_CLIENT_SECRET:-}" ] && echo 'YES' || echo 'NO')"
+
+# Validate required authentication environment variables from .env
+if [ -z "${METADATA_SERVICE_AUTH_ENABLED:-}" ]; then
+    echo "ERROR: METADATA_SERVICE_AUTH_ENABLED must be either 'true' or 'false', got: '${METADATA_SERVICE_AUTH_ENABLED}'"
+    exit 1
 fi
+
+if [ "${METADATA_SERVICE_AUTH_ENABLED}" = "true" ]; then
+    if [ -z "${DATAHUB_SYSTEM_CLIENT_ID:-}" ]; then
+        echo "ERROR: DATAHUB_SYSTEM_CLIENT_ID must be set when METADATA_SERVICE_AUTH_ENABLED=true"
+        exit 1
+    fi
+    if [ -z "${DATAHUB_SYSTEM_CLIENT_SECRET:-}" ]; then
+        echo "ERROR: DATAHUB_SYSTEM_CLIENT_SECRET must be set when METADATA_SERVICE_AUTH_ENABLED=true"
+        exit 1
+    fi
+    echo "✓ System client credentials are set (auth enabled)"
+else
+    # If auth is disabled, unset system client credentials
+    unset DATAHUB_SYSTEM_CLIENT_ID
+    unset DATAHUB_SYSTEM_CLIENT_SECRET
+    echo "✓ System client credentials unset (auth disabled)"
+fi
+
+echo ""
+
 echo "AUTH_NATIVE_ENABLED='${AUTH_NATIVE_ENABLED:-NOT SET}'"
 echo "AUTH_GUEST_ENABLED='${AUTH_GUEST_ENABLED:-NOT SET}'"
 echo "========================================="
@@ -339,6 +362,19 @@ else
 fi
 echo "=================================="
 echo ""
+
+# Workaround for jetty-util.jar issue
+# Some versions of the base image may reference jetty-util.jar in JAVA_OPTS
+# Remove any references to jetty-util.jar from JAVA_OPTS
+if [ -n "$JAVA_OPTS" ]; then
+    # Remove --jar file:///tmp/jetty-util.jar or similar references
+    JAVA_OPTS=$(echo "$JAVA_OPTS" | sed 's|--jar file:///tmp/jetty-util\.jar||g' | sed 's|--jar /tmp/jetty-util\.jar||g')
+    export JAVA_OPTS
+    echo "Cleaned JAVA_OPTS of jetty-util.jar references"
+fi
+
+# Also check if there's an environment variable specifically for jetty-util
+unset JETTY_UTIL_JAR 2>/dev/null || true
 
 # Execute the original entrypoint/command
 exec "$@"
