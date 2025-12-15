@@ -32,28 +32,7 @@ echo "METADATA_SERVICE_AUTH_ENABLED='${METADATA_SERVICE_AUTH_ENABLED:-NOT SET}'"
 echo "KAFKA_BOOTSTRAP_SERVER='$KAFKA_BOOTSTRAP_SERVER'"
 echo "OPENSEARCH_URI is set: $([ -n "$OPENSEARCH_URI" ] && echo 'YES' || echo 'NO')"
 
-# Validate required authentication environment variables from .env
-if [ -z "${METADATA_SERVICE_AUTH_ENABLED:-}" ]; then
-    echo "ERROR: METADATA_SERVICE_AUTH_ENABLED must be either 'true' or 'false', got: '${METADATA_SERVICE_AUTH_ENABLED}'"
-    exit 1
-fi
 
-if [ "${METADATA_SERVICE_AUTH_ENABLED}" = "true" ]; then
-    if [ -z "${DATAHUB_SYSTEM_CLIENT_ID:-}" ]; then
-        echo "ERROR: DATAHUB_SYSTEM_CLIENT_ID must be set when METADATA_SERVICE_AUTH_ENABLED=true"
-        exit 1
-    fi
-    if [ -z "${DATAHUB_SYSTEM_CLIENT_SECRET:-}" ]; then
-        echo "ERROR: DATAHUB_SYSTEM_CLIENT_SECRET must be set when METADATA_SERVICE_AUTH_ENABLED=true"
-        exit 1
-    fi
-    echo "✓ System client credentials are set (auth enabled)"
-else
-    # If auth is disabled, unset system client credentials
-    unset DATAHUB_SYSTEM_CLIENT_ID
-    unset DATAHUB_SYSTEM_CLIENT_SECRET
-    echo "✓ System client credentials unset (auth disabled)"
-fi
 
 echo ""
 
@@ -227,11 +206,33 @@ fi
 
 echo "=== All dependencies ready ==="
 
-# Set DATAHUB_SYSTEM_CLIENT_SECRET from DATAHUB_SECRET if not provided
-# This is required for frontend to authenticate to GMS when GMS has METADATA_SERVICE_AUTH_ENABLED=true
-if [ -z "$DATAHUB_SYSTEM_CLIENT_SECRET" ] && [ -n "$DATAHUB_SECRET" ]; then
-    export DATAHUB_SYSTEM_CLIENT_SECRET="$DATAHUB_SECRET"
-    echo "Set DATAHUB_SYSTEM_CLIENT_SECRET from DATAHUB_SECRET (for GMS authentication)"
+# Setup user.props file for default user credentials
+# See: https://docs.datahub.com/docs/authentication/changing-default-credentials
+USER_PROPS_PATH="/datahub-frontend/conf/user.props"
+USER_PROPS_DIR="$(dirname "$USER_PROPS_PATH")"
+
+# Ensure directory exists
+mkdir -p "$USER_PROPS_DIR"
+
+if [ -n "${DATAHUB_DEFAULT_PASSWORD:-}" ]; then
+    # If password is set, create/update user.props
+    DEFAULT_USER="${DATAHUB_DEFAULT_USER:-datahub}"
+    echo "${DEFAULT_USER}:${DATAHUB_DEFAULT_PASSWORD}" > "$USER_PROPS_PATH"
+    chmod 644 "$USER_PROPS_PATH"
+    echo "✓ Created user.props with user: ${DEFAULT_USER}"
+elif [ "${DATAHUB_DEFAULT_USER_CREDENTIALS+set}" = "set" ]; then
+    # DATAHUB_DEFAULT_USER_CREDENTIALS is explicitly set (even if empty)
+    # Empty string means remove default user
+    echo "$DATAHUB_DEFAULT_USER_CREDENTIALS" > "$USER_PROPS_PATH"
+    chmod 644 "$USER_PROPS_PATH"
+    if [ -z "$DATAHUB_DEFAULT_USER_CREDENTIALS" ]; then
+        echo "✓ Created empty user.props (default user removed)"
+    else
+        echo "✓ Created user.props with credentials from DATAHUB_DEFAULT_USER_CREDENTIALS"
+    fi
+else
+    # No custom credentials - use default (datahub:datahub)
+    echo "Using default user credentials (datahub:datahub)"
 fi
 
 # Debug: print configured endpoints (without secrets)
@@ -240,19 +241,6 @@ echo "GMS Host: ${DATAHUB_GMS_HOST:-NOT SET}:${DATAHUB_GMS_PORT:-NOT SET}"
 echo "Kafka Bootstrap: ${KAFKA_BOOTSTRAP_SERVER:-NOT SET}"
 echo "OpenSearch Host: ${ELASTIC_CLIENT_HOST:-NOT SET}:${ELASTIC_CLIENT_PORT:-NOT SET}"
 echo ""
-echo "=== Final Authentication Check ==="
-if [ -n "$DATAHUB_SECRET" ] && [ "${METADATA_SERVICE_AUTH_ENABLED:-false}" = "false" ]; then
-    echo "✓ Authentication configuration is correct:"
-    echo "  - DATAHUB_SECRET is set"
-    echo "  - METADATA_SERVICE_AUTH_ENABLED=false"
-    echo "  - DATAHUB_SYSTEM_CLIENT_ID=${DATAHUB_SYSTEM_CLIENT_ID:-__datahub_system}"
-    echo "  - DATAHUB_SYSTEM_CLIENT_SECRET is set: $([ -n "$DATAHUB_SYSTEM_CLIENT_SECRET" ] && echo 'YES' || echo 'NO')"
-else
-    echo "✗ Authentication configuration issue detected:"
-    [ -z "$DATAHUB_SECRET" ] && echo "  - DATAHUB_SECRET is NOT SET"
-    [ "${METADATA_SERVICE_AUTH_ENABLED:-false}" != "false" ] && echo "  - METADATA_SERVICE_AUTH_ENABLED is '${METADATA_SERVICE_AUTH_ENABLED:-NOT SET}' (should be 'false')"
-fi
-echo "======================================"
 
 # Set JAVA_OPTS for Play Framework (similar to original start.sh)
 # Pass GMS connection variables as Java system properties as a backup/guarantee

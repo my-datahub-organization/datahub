@@ -4,31 +4,6 @@
 
 set -e
 
-echo "=== DataHub Upgrade Job Entrypoint Starting ==="
-
-# Validate required authentication environment variables from .env
-if [ -z "${METADATA_SERVICE_AUTH_ENABLED:-}" ]; then
-    echo "ERROR: METADATA_SERVICE_AUTH_ENABLED must be either 'true' or 'false', got: '${METADATA_SERVICE_AUTH_ENABLED}'"
-    exit 1
-fi
-
-if [ "${METADATA_SERVICE_AUTH_ENABLED}" = "true" ]; then
-    if [ -z "${DATAHUB_SYSTEM_CLIENT_ID:-}" ]; then
-        echo "ERROR: DATAHUB_SYSTEM_CLIENT_ID must be set when METADATA_SERVICE_AUTH_ENABLED=true"
-        exit 1
-    fi
-    if [ -z "${DATAHUB_SYSTEM_CLIENT_SECRET:-}" ]; then
-        echo "ERROR: DATAHUB_SYSTEM_CLIENT_SECRET must be set when METADATA_SERVICE_AUTH_ENABLED=true"
-        exit 1
-    fi
-    echo "✓ System client credentials are set (auth enabled)"
-else
-    # If auth is disabled, unset system client credentials
-    unset DATAHUB_SYSTEM_CLIENT_ID
-    unset DATAHUB_SYSTEM_CLIENT_SECRET
-    echo "✓ System client credentials unset (auth disabled)"
-fi
-
 echo ""
 
 # Debug: show what env vars we received
@@ -155,10 +130,38 @@ if [ -n "${OPENSEARCH_URI:-}" ]; then
     fi
     
     echo "OpenSearch: $ELASTICSEARCH_HOST:$ELASTICSEARCH_PORT (SSL: ${ELASTICSEARCH_USE_SSL:-false})"
+    
+    # Force OpenSearch implementation (prevents auto-detection from trying Elasticsearch client)
+    export ELASTICSEARCH_IMPLEMENTATION=opensearch
+    echo "ELASTICSEARCH_IMPLEMENTATION set to: opensearch"
 else
     echo "ERROR: OPENSEARCH_URI is not set!"
     exit 1
 fi
+
+# Function to wait for DNS resolution of a host
+# Default: 40 attempts * 30 seconds = 20 minutes max wait
+wait_for_dns() {
+    local host="$1"
+    local max_attempts="${2:-40}"
+    local attempt=1
+    
+    echo "Waiting for DNS resolution of $host (max wait: $((max_attempts * 30 / 60)) minutes)..."
+    while [ $attempt -le $max_attempts ]; do
+        if getent hosts "$host" > /dev/null 2>&1; then
+            echo "DNS resolved for $host after $((attempt * 30)) seconds"
+            return 0
+        fi
+        if [ $((attempt % 2)) -eq 0 ]; then
+            echo "Still waiting for $host... ($((attempt * 30 / 60)) minutes elapsed)"
+        fi
+        sleep 30
+        attempt=$((attempt + 1))
+    done
+    
+    echo "WARNING: DNS resolution failed for $host after $((max_attempts * 30 / 60)) minutes"
+    return 1
+}
 
 # Setup certificates if Kafka cert environment variables are present
 if [ -n "${KAFKA_ACCESS_CERT:-}" ] && [ -n "${KAFKA_ACCESS_KEY:-}" ] && [ -n "${KAFKA_CA_CERT:-}" ]; then
@@ -172,6 +175,28 @@ else
     fi
     echo "Kafka: $KAFKA_BOOTSTRAP_SERVER (no SSL)"
 fi
+
+# Wait for dependencies
+echo "=== Waiting for dependencies ==="
+
+# Wait for PostgreSQL
+if [ -n "${EBEAN_DATASOURCE_HOST:-}" ]; then
+    PG_HOST="${EBEAN_DATASOURCE_HOST%%:*}"
+    wait_for_dns "$PG_HOST" || echo "Continuing anyway..."
+fi
+
+# Wait for OpenSearch
+if [ -n "${ELASTICSEARCH_HOST:-}" ]; then
+    wait_for_dns "$ELASTICSEARCH_HOST" || echo "Continuing anyway..."
+fi
+
+# Wait for Kafka
+if [ -n "${KAFKA_BOOTSTRAP_SERVER:-}" ]; then
+    KAFKA_HOST="${KAFKA_BOOTSTRAP_SERVER%%:*}"
+    wait_for_dns "$KAFKA_HOST" || echo "Continuing anyway..."
+fi
+
+echo "=== All dependencies ready ==="
 
 # Validate required environment variables
 if [ -z "${EBEAN_DATASOURCE_URL:-}" ]; then
@@ -206,8 +231,21 @@ echo "=== FINAL ENVIRONMENT CHECK ==="
 echo "METADATA_SERVICE_AUTH_ENABLED=${METADATA_SERVICE_AUTH_ENABLED}"
 echo "AUTH_NATIVE_ENABLED=${AUTH_NATIVE_ENABLED}"
 echo "AUTH_GUEST_ENABLED=${AUTH_GUEST_ENABLED}"
+echo "ELASTICSEARCH_IMPLEMENTATION=${ELASTICSEARCH_IMPLEMENTATION:-NOT SET}"
+echo "ELASTICSEARCH_HOST=${ELASTICSEARCH_HOST:-NOT SET}"
+echo "ELASTICSEARCH_PORT=${ELASTICSEARCH_PORT:-NOT SET}"
+echo "ELASTICSEARCH_USE_SSL=${ELASTICSEARCH_USE_SSL:-NOT SET}"
 echo "================================"
 echo ""
 
 # Execute the upgrade job
-exec "$@"
+# If the command is a Java command, ensure ELASTICSEARCH_IMPLEMENTATION is passed as a system property
+if [ "$1" = "java" ] || [ "${1##*/}" = "java" ]; then
+    # Prepend the system property to ensure it's set
+    # Shift to remove "java" from arguments, then prepend it with the system property
+    shift
+    exec java -DELASTICSEARCH_IMPLEMENTATION="${ELASTICSEARCH_IMPLEMENTATION:-opensearch}" "$@"
+else
+    # Not a Java command, execute as-is
+    exec "$@"
+fi

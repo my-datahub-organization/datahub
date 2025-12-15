@@ -5,31 +5,25 @@
 ARG DATAHUB_VERSION=head
 FROM acryldata/datahub-actions:${DATAHUB_VERSION}-slim
 
-# Install OpenSSL and Java keytool for certificate operations (as root)
-USER root
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    openssl \
-    openjdk-17-jre-headless \
-    && rm -rf /var/lib/apt/lists/*
-
 # Copy entrypoint script
-COPY entrypoint.sh /entrypoint.sh
-RUN chmod +x /entrypoint.sh
+COPY --chmod=755 entrypoint.sh /entrypoint.sh
 
-USER datahub
-
-# Authentication Configuration - MUST be provided via environment variables from .env
-# GMS Connection (overridden by entrypoint from DATAHUB_GMS_URL)
-ENV DATAHUB_GMS_HOST=host.docker.internal
+# GMS Connection (will be overridden by DATAHUB_GMS_URL from docker-compose)
+ENV DATAHUB_GMS_HOST=gms
 ENV DATAHUB_GMS_PORT=8080
 ENV DATAHUB_GMS_PROTOCOL=http
 
-# Kafka Configuration - Certificate-based authentication (mTLS)
-ENV KAFKA_PROPERTIES_SECURITY_PROTOCOL=SSL
-ENV KAFKA_PROPERTIES_SSL_ENDPOINT_IDENTIFICATION_ALGORITHM=
-ENV KAFKA_PROPERTIES_SSL_TRUSTSTORE_TYPE=JKS
-ENV KAFKA_PROPERTIES_SSL_KEYSTORE_TYPE=PKCS12
+# Schema Registry
+ENV SCHEMA_REGISTRY_URL=http://gms:8080/schema-registry/api/
 
-# Use entrypoint to map env var names
+# Kafka Topics
+ENV METADATA_CHANGE_LOG_VERSIONED_TOPIC_NAME=MetadataChangeLog_Versioned_v1
+ENV PLATFORM_EVENT_TOPIC_NAME=PlatformEvent_v1
+
+# Kafka SSL Configuration (Python kafka-python properties)
+ENV KAFKA_PROPERTIES_SECURITY_PROTOCOL=SSL
+ENV KAFKA_PROPERTIES_SSL_ENDPOINT_IDENTIFICATION_ALGORITHM=none
+
+# Use entrypoint to write certificates and set environment variables
 ENTRYPOINT ["/bin/bash", "/entrypoint.sh"]
 CMD ["datahub-actions", "actions", "run", "-c", "/etc/datahub/actions/system/conf/executor.yaml"]

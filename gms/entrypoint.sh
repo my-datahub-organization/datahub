@@ -98,29 +98,6 @@ echo "METADATA_SERVICE_AUTH_ENABLED='${METADATA_SERVICE_AUTH_ENABLED:-NOT SET}'"
 echo "DATAHUB_SYSTEM_CLIENT_ID set: $([ -n "${DATAHUB_SYSTEM_CLIENT_ID:-}" ] && echo 'YES' || echo 'NO')"
 echo "DATAHUB_SYSTEM_CLIENT_SECRET set: $([ -n "${DATAHUB_SYSTEM_CLIENT_SECRET:-}" ] && echo 'YES' || echo 'NO')"
 
-# Validate required authentication environment variables from .env
-if [ -z "${METADATA_SERVICE_AUTH_ENABLED:-}" ]; then
-    echo "ERROR: METADATA_SERVICE_AUTH_ENABLED must be either 'true' or 'false', got: '${METADATA_SERVICE_AUTH_ENABLED}'"
-    exit 1
-fi
-
-if [ "${METADATA_SERVICE_AUTH_ENABLED}" = "true" ]; then
-    if [ -z "${DATAHUB_SYSTEM_CLIENT_ID:-}" ]; then
-        echo "ERROR: DATAHUB_SYSTEM_CLIENT_ID must be set when METADATA_SERVICE_AUTH_ENABLED=true"
-        exit 1
-    fi
-    if [ -z "${DATAHUB_SYSTEM_CLIENT_SECRET:-}" ]; then
-        echo "ERROR: DATAHUB_SYSTEM_CLIENT_SECRET must be set when METADATA_SERVICE_AUTH_ENABLED=true"
-        exit 1
-    fi
-    echo "✓ System client credentials are set (auth enabled)"
-else
-    # If auth is disabled, unset system client credentials
-    unset DATAHUB_SYSTEM_CLIENT_ID
-    unset DATAHUB_SYSTEM_CLIENT_SECRET
-    echo "✓ System client credentials unset (auth disabled)"
-fi
-
 echo ""
 
 echo "AUTH_NATIVE_ENABLED='${AUTH_NATIVE_ENABLED:-NOT SET}'"
@@ -336,32 +313,26 @@ if [ -n "$KAFKA_BOOTSTRAP_SERVER" ]; then
     echo "Kafka: $KAFKA_BOOTSTRAP_SERVER (mTLS)"
 fi
 
-# Configure Schema Registry to use GMS's built-in endpoint
-# GMS has a built-in schema registry at /schema-registry/api/
-# We'll set this to point to localhost (GMS itself) once it starts
-if [ -z "$KAFKA_SCHEMAREGISTRY_URL" ]; then
-    # Use GMS's built-in schema registry endpoint
-    export KAFKA_SCHEMAREGISTRY_URL="http://localhost:8080/schema-registry/api/"
-    echo "Schema Registry: Using GMS's built-in endpoint at $KAFKA_SCHEMAREGISTRY_URL"
+# Configure Schema Registry
+# When SCHEMA_REGISTRY_TYPE=INTERNAL, GMS uses its built-in schema registry
+# The KafkaAvroSerializer still needs a URL, so we point it to GMS's own endpoint
+# Use localhost:8080 (container port) not the host-mapped port
+if [ "${SCHEMA_REGISTRY_TYPE:-}" = "INTERNAL" ]; then
+    if [ -z "$KAFKA_SCHEMAREGISTRY_URL" ]; then
+        # Set to GMS's own schema registry endpoint (container port 8080)
+        export KAFKA_SCHEMAREGISTRY_URL="http://localhost:8080/schema-registry/api/"
+        echo "Schema Registry: Using GMS's built-in internal schema registry at $KAFKA_SCHEMAREGISTRY_URL"
+    else
+        echo "Schema Registry: Using configured URL: $KAFKA_SCHEMAREGISTRY_URL"
+    fi
+elif [ -n "$KAFKA_SCHEMAREGISTRY_URL" ]; then
+    echo "Schema Registry: Using external URL: $KAFKA_SCHEMAREGISTRY_URL"
 else
-    echo "Schema Registry: Using configured URL: $KAFKA_SCHEMAREGISTRY_URL"
+    echo "Schema Registry: No URL configured, using default behavior"
 fi
 
 
 echo "=== Configuration Complete ==="
-echo ""
-echo "=== Final Authentication Check ==="
-if [ -n "$DATAHUB_SECRET" ] && [ "${METADATA_SERVICE_AUTH_ENABLED:-false}" = "false" ]; then
-    echo "✓ Authentication configuration is correct:"
-    echo "  - DATAHUB_SECRET is set"
-    echo "  - METADATA_SERVICE_AUTH_ENABLED=false"
-else
-    echo "✗ Authentication configuration issue detected:"
-    [ -z "$DATAHUB_SECRET" ] && echo "  - DATAHUB_SECRET is NOT SET"
-    [ "${METADATA_SERVICE_AUTH_ENABLED:-false}" != "false" ] && echo "  - METADATA_SERVICE_AUTH_ENABLED is '${METADATA_SERVICE_AUTH_ENABLED:-NOT SET}' (should be 'false')"
-fi
-echo "=================================="
-echo ""
 
 # Workaround for jetty-util.jar issue
 # Some versions of the base image may reference jetty-util.jar in JAVA_OPTS

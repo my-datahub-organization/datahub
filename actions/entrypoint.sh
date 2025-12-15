@@ -1,45 +1,5 @@
 #!/bin/bash
-# Entrypoint script for DataHub Actions
-# Maps environment variable names to expected format
-
 set -e
-
-echo "=== DataHub Actions Entrypoint Starting ==="
-
-# Validate required authentication environment variables from .env
-if [ -z "${METADATA_SERVICE_AUTH_ENABLED:-}" ]; then
-    echo "ERROR: METADATA_SERVICE_AUTH_ENABLED must be either 'true' or 'false', got: '${METADATA_SERVICE_AUTH_ENABLED}'"
-    exit 1
-fi
-
-if [ "${METADATA_SERVICE_AUTH_ENABLED}" = "true" ]; then
-    if [ -z "${DATAHUB_SYSTEM_CLIENT_ID:-}" ]; then
-        echo "ERROR: DATAHUB_SYSTEM_CLIENT_ID must be set when METADATA_SERVICE_AUTH_ENABLED=true"
-        exit 1
-    fi
-    if [ -z "${DATAHUB_SYSTEM_CLIENT_SECRET:-}" ]; then
-        echo "ERROR: DATAHUB_SYSTEM_CLIENT_SECRET must be set when METADATA_SERVICE_AUTH_ENABLED=true"
-        exit 1
-    fi
-    echo "✓ System client credentials are set (auth enabled)"
-else
-    # If auth is disabled, unset system client credentials
-    unset DATAHUB_SYSTEM_CLIENT_ID
-    unset DATAHUB_SYSTEM_CLIENT_SECRET
-    echo "✓ System client credentials unset (auth disabled)"
-fi
-
-echo ""
-
-# Require DATAHUB_GMS_URL - must be set manually
-if [ -z "$DATAHUB_GMS_URL" ]; then
-    echo "ERROR: DATAHUB_GMS_URL is required but not set"
-    echo "Please set DATAHUB_GMS_URL to the GMS service URL (e.g., http://gms-host:8080)"
-    exit 1
-fi
-
-echo "DATAHUB_GMS_URL: $DATAHUB_GMS_URL"
-echo "KAFKA_BOOTSTRAP_SERVER: ${KAFKA_BOOTSTRAP_SERVER:-NOT SET}"
 
 # Function to wait for DNS resolution of a host
 # Default: 40 attempts * 30 seconds = 20 minutes max wait
@@ -73,9 +33,15 @@ wait_for_gms() {
     
     echo "Waiting for GMS at $gms_url (max wait: $((max_attempts * 30 / 60)) minutes)..."
     while [ $attempt -le $max_attempts ]; do
-        if curl -sf --max-time 5 "${gms_url}/config" > /dev/null 2>&1; then
+        if curl -sfk --max-time 5 "${gms_url}/config" > /dev/null 2>&1; then
             echo "GMS is ready at $gms_url"
-            return 0
+            # Also wait for schema registry endpoint to be ready
+            if curl -sfk --max-time 5 "${gms_url}/schema-registry/api/subjects" > /dev/null 2>&1; then
+                echo "Schema registry is ready at ${gms_url}/schema-registry/api/"
+                return 0
+            else
+                echo "GMS is ready but schema registry not yet available, waiting..."
+            fi
         fi
         if [ $((attempt % 2)) -eq 0 ]; then
             echo "Still waiting for GMS... ($((attempt * 30 / 60)) minutes elapsed)"
@@ -88,121 +54,91 @@ wait_for_gms() {
     return 1
 }
 
-# Parse DATAHUB_GMS_URL (format: http://host:port or https://host:port)
-GMS_PROTO="${DATAHUB_GMS_URL%%://*}"
-GMS_URL_NO_PROTO="${DATAHUB_GMS_URL#*://}"
-GMS_HOSTPORT="${GMS_URL_NO_PROTO%%/*}"
-
-if [[ "$GMS_HOSTPORT" == *":"* ]]; then
-    export DATAHUB_GMS_HOST="${GMS_HOSTPORT%%:*}"
-    export DATAHUB_GMS_PORT="${GMS_HOSTPORT#*:}"
-else
-    export DATAHUB_GMS_HOST="$GMS_HOSTPORT"
-    if [ "$GMS_PROTO" = "https" ]; then
-        export DATAHUB_GMS_PORT="443"
+# Parse DATAHUB_GMS_URL if provided (format: http://host:port or https://host:port)
+# This overrides the Dockerfile defaults (gms:8080) when running externally
+if [ -n "${DATAHUB_GMS_URL:-}" ]; then
+    GMS_PROTO="${DATAHUB_GMS_URL%%://*}"
+    GMS_URL_NO_PROTO="${DATAHUB_GMS_URL#*://}"
+    GMS_HOSTPORT="${GMS_URL_NO_PROTO%%/*}"
+    
+    if [[ "$GMS_HOSTPORT" == *":"* ]]; then
+        GMS_HOST="${GMS_HOSTPORT%%:*}"
+        GMS_PORT="${GMS_HOSTPORT#*:}"
     else
-        export DATAHUB_GMS_PORT="80"
+        GMS_HOST="$GMS_HOSTPORT"
+        if [ "$GMS_PROTO" = "https" ]; then
+            GMS_PORT="443"
+        else
+            GMS_PORT="80"
+        fi
     fi
+    
+    # Override the Dockerfile defaults
+    export DATAHUB_GMS_HOST="$GMS_HOST"
+    export DATAHUB_GMS_PORT="$GMS_PORT"
+    export DATAHUB_GMS_PROTOCOL="$GMS_PROTO"
+    
+    # Update SCHEMA_REGISTRY_URL to use the parsed GMS URL
+    export SCHEMA_REGISTRY_URL="${DATAHUB_GMS_URL}/schema-registry/api/"
+    
+    echo "Parsed GMS URL: DATAHUB_GMS_HOST=$DATAHUB_GMS_HOST, DATAHUB_GMS_PORT=$DATAHUB_GMS_PORT, DATAHUB_GMS_PROTOCOL=$DATAHUB_GMS_PROTOCOL"
+    echo "Schema Registry URL: $SCHEMA_REGISTRY_URL"
 fi
-export DATAHUB_GMS_PROTOCOL="$GMS_PROTO"
-export SCHEMA_REGISTRY_URL="${DATAHUB_GMS_URL}/schema-registry/api/"
 
-echo "GMS: $DATAHUB_GMS_PROTOCOL://$DATAHUB_GMS_HOST:$DATAHUB_GMS_PORT"
-
-# Setup Kafka SSL certificates for mTLS
+# Write Kafka SSL certificates to disk if provided
 if [ -n "$KAFKA_ACCESS_CERT" ] && [ -n "$KAFKA_ACCESS_KEY" ] && [ -n "$KAFKA_CA_CERT" ]; then
-    echo "Setting up Kafka SSL certificates..."
+    mkdir -p /etc/datahub/certs/kafka
+    echo "$KAFKA_CA_CERT" > /etc/datahub/certs/kafka/ca.pem
+    echo "$KAFKA_ACCESS_CERT" > /etc/datahub/certs/kafka/service.cert
+    echo "$KAFKA_ACCESS_KEY" > /etc/datahub/certs/kafka/service.key
+    chmod 644 /etc/datahub/certs/kafka/ca.pem /etc/datahub/certs/kafka/service.cert
+    chmod 600 /etc/datahub/certs/kafka/service.key
     
-    CERTS_DIR="/tmp/certs"
-    mkdir -p "$CERTS_DIR"
-    chmod 700 "$CERTS_DIR"
-    
-    # Write certificates to files
-    echo "$KAFKA_ACCESS_CERT" > "$CERTS_DIR/kafka-client.crt"
-    echo "$KAFKA_ACCESS_KEY" > "$CERTS_DIR/kafka-client.key"
-    echo "$KAFKA_CA_CERT" > "$CERTS_DIR/kafka-ca.crt"
-    
-    # Set proper permissions
-    chmod 644 "$CERTS_DIR/kafka-client.crt" "$CERTS_DIR/kafka-ca.crt"
-    chmod 600 "$CERTS_DIR/kafka-client.key"
-    
-    # Create PKCS12 keystore from certificate and key
-    KEYSTORE_PATH="/tmp/kafka-client-keystore.p12"
-    KEYSTORE_PASS="changeit"
-    
-    openssl pkcs12 -export \
-        -in "$CERTS_DIR/kafka-client.crt" \
-        -inkey "$CERTS_DIR/kafka-client.key" \
-        -out "$KEYSTORE_PATH" \
-        -name kafka-client \
-        -passout pass:"$KEYSTORE_PASS" 2>&1 || {
-        echo "ERROR: Failed to create keystore"
-        exit 1
-    }
-    chmod 600 "$KEYSTORE_PATH"
-    export KAFKA_PROPERTIES_SSL_KEYSTORE_LOCATION="$KEYSTORE_PATH"
-    export KAFKA_PROPERTIES_SSL_KEYSTORE_PASSWORD="$KEYSTORE_PASS"
-    
-    # Create JKS truststore from CA certificate
-    TRUSTSTORE_PATH="/tmp/kafka-truststore.jks"
-    TRUSTSTORE_PASS="changeit"
-    
-    rm -f "$TRUSTSTORE_PATH"
-    keytool -import -trustcacerts -keystore "$TRUSTSTORE_PATH" -storepass "$TRUSTSTORE_PASS" \
-        -noprompt -alias "kafka-ca" -file "$CERTS_DIR/kafka-ca.crt" 2>&1 || {
-        echo "ERROR: Failed to create truststore"
-        exit 1
-    }
-    export KAFKA_PROPERTIES_SSL_TRUSTSTORE_LOCATION="$TRUSTSTORE_PATH"
-    export KAFKA_PROPERTIES_SSL_TRUSTSTORE_PASSWORD="$TRUSTSTORE_PASS"
-    
-    echo "Kafka certificates configured for mTLS"
-    echo "Keystore: $KAFKA_PROPERTIES_SSL_KEYSTORE_LOCATION"
-    echo "Truststore: $KAFKA_PROPERTIES_SSL_TRUSTSTORE_LOCATION"
-fi
-
-# Kafka configuration
-if [ -n "$KAFKA_BOOTSTRAP_SERVER" ]; then
-    echo "Kafka: $KAFKA_BOOTSTRAP_SERVER (mTLS)"
-fi
-
-# Set system client ID if not provided (defaults to __datahub_system)
-if [ -z "$DATAHUB_SYSTEM_CLIENT_ID" ]; then
-    export DATAHUB_SYSTEM_CLIENT_ID="__datahub_system"
-    echo "Using default DATAHUB_SYSTEM_CLIENT_ID: __datahub_system"
-fi
-
-# Set system client secret if not provided (must match across all services)
-# Uses DATAHUB_SECRET as fallback since it's already shared across services
-if [ -z "$DATAHUB_SYSTEM_CLIENT_SECRET" ]; then
-    if [ -z "$DATAHUB_SECRET" ]; then
-        echo "ERROR: DATAHUB_SYSTEM_CLIENT_SECRET or DATAHUB_SECRET must be set"
-        echo "The system client secret must be shared across all services (frontend, gms, actions)"
-        exit 1
+    # Add consumer_config to executor.yaml if not present
+    EXECUTOR_YAML="/etc/datahub/actions/system/conf/executor.yaml"
+    if ! grep -q "consumer_config:" "$EXECUTOR_YAML"; then
+        sed -i '/schema_registry_url:/a\      consumer_config:\n        security.protocol: ${KAFKA_PROPERTIES_SECURITY_PROTOCOL:-SSL}\n        ssl.endpoint.identification.algorithm: ${KAFKA_PROPERTIES_SSL_ENDPOINT_IDENTIFICATION_ALGORITHM:-none}\n        ssl.ca.location: /etc/datahub/certs/kafka/ca.pem\n        ssl.certificate.location: /etc/datahub/certs/kafka/service.cert\n        ssl.key.location: /etc/datahub/certs/kafka/service.key' "$EXECUTOR_YAML"
     fi
-    export DATAHUB_SYSTEM_CLIENT_SECRET="$DATAHUB_SECRET"
-    echo "Using DATAHUB_SECRET as DATAHUB_SYSTEM_CLIENT_SECRET (shared across services)"
 fi
 
-# Wait for all dependencies to be DNS-resolvable before proceeding
+# Wait for dependencies
 echo "=== Waiting for dependencies ==="
 
-# Wait for GMS to be ready
-wait_for_gms "$DATAHUB_GMS_URL" || echo "Continuing anyway..."
+# Wait for GMS if DATAHUB_GMS_URL is set
+if [ -n "${DATAHUB_GMS_URL:-}" ]; then
+    wait_for_gms "$DATAHUB_GMS_URL" || echo "Continuing anyway..."
+fi
 
-# Wait for Kafka
-if [ -n "$KAFKA_BOOTSTRAP_SERVER" ]; then
+# Wait for Kafka if KAFKA_BOOTSTRAP_SERVER is set
+if [ -n "${KAFKA_BOOTSTRAP_SERVER:-}" ]; then
     KAFKA_HOST="${KAFKA_BOOTSTRAP_SERVER%%:*}"
     wait_for_dns "$KAFKA_HOST" || echo "Continuing anyway..."
 fi
 
 echo "=== All dependencies ready ==="
 
-# Debug: print configured endpoints (without secrets)
-echo "GMS: ${DATAHUB_GMS_HOST:-NOT SET}:${DATAHUB_GMS_PORT:-NOT SET}"
-echo "Kafka: ${KAFKA_BOOTSTRAP_SERVER:-NOT SET}"
-echo "Schema Registry: ${SCHEMA_REGISTRY_URL:-NOT SET}"
+# Ensure system client credentials are exported for ingestion subprocesses
+# The Python ingestion client reads these from environment variables
+if [ -n "${DATAHUB_SYSTEM_CLIENT_ID:-}" ]; then
+    export DATAHUB_SYSTEM_CLIENT_ID
+    echo "DATAHUB_SYSTEM_CLIENT_ID exported: ${DATAHUB_SYSTEM_CLIENT_ID}"
+else
+    # Default to __datahub_system if not set
+    export DATAHUB_SYSTEM_CLIENT_ID="__datahub_system"
+    echo "DATAHUB_SYSTEM_CLIENT_ID defaulted to: __datahub_system"
+fi
 
-# Execute the original command
+if [ -n "${DATAHUB_SYSTEM_CLIENT_SECRET:-}" ]; then
+    export DATAHUB_SYSTEM_CLIENT_SECRET
+    echo "DATAHUB_SYSTEM_CLIENT_SECRET exported: [REDACTED]"
+else
+    echo "WARNING: DATAHUB_SYSTEM_CLIENT_SECRET is not set - ingestion may fail with 401 Unauthorized"
+fi
+
+# Also export GMS URL variables for the Python client
+if [ -n "${DATAHUB_GMS_URL:-}" ]; then
+    export DATAHUB_GMS_URL
+    echo "DATAHUB_GMS_URL exported: ${DATAHUB_GMS_URL}"
+fi
+
 exec "$@"
-
