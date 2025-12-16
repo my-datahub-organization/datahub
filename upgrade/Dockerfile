@@ -41,5 +41,8 @@ ENV ELASTICSEARCH_SSL_PROTOCOL=TLSv1.2
 # Entity Registry Configuration
 ENV ENTITY_REGISTRY_CONFIG_PATH=/datahub/datahub-gms/resources/entity-registry.yml
 
+# JVM Memory Settings - Using full 2GB container limit
+ENV JAVA_OPTS="-Xms1g -Xmx2g"
+
 ENTRYPOINT ["/bin/bash", "/custom-entrypoint.sh"]
 CMD ["java", "-jar", "/datahub/datahub-upgrade/bin/datahub-upgrade.jar", "-u", "SystemUpdate"]
