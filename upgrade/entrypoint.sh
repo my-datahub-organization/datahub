@@ -214,15 +214,6 @@ if [ -z "${KAFKA_BOOTSTRAP_SERVER:-}" ]; then
     exit 1
 fi
 
-# Disable authentication for upgrade job (required for SystemUpdate to work)
-export METADATA_SERVICE_AUTH_ENABLED=false
-export AUTH_NATIVE_ENABLED=false
-export AUTH_GUEST_ENABLED=false
-
-# Unset system client credentials to ensure no auth is attempted
-unset DATAHUB_SYSTEM_CLIENT_ID
-unset DATAHUB_SYSTEM_CLIENT_SECRET
-
 echo "=== Configuration Complete ==="
 echo ""
 echo "Starting upgrade job..."
