@@ -4,16 +4,15 @@
 
 set -e
 
-echo ""
+echo "======================= Environment Variables ========================="
 
-# Debug: show what env vars we received
-echo "DEBUG: Environment variables from docker-compose:"
 echo "  DATABASE_URL set: $([ -n "${DATABASE_URL:-}" ] && echo 'YES' || echo 'NO')"
 echo "  OPENSEARCH_URI set: $([ -n "${OPENSEARCH_URI:-}" ] && echo 'YES' || echo 'NO')"
 echo "  KAFKA_BOOTSTRAP_SERVER set: $([ -n "${KAFKA_BOOTSTRAP_SERVER:-}" ] && echo 'YES' || echo 'NO')"
 echo "  KAFKA_ACCESS_CERT set: $([ -n "${KAFKA_ACCESS_CERT:-}" ] && echo 'YES' || echo 'NO')"
 echo "  KAFKA_ACCESS_KEY set: $([ -n "${KAFKA_ACCESS_KEY:-}" ] && echo 'YES' || echo 'NO')"
 echo "  KAFKA_CA_CERT set: $([ -n "${KAFKA_CA_CERT:-}" ] && echo 'YES' || echo 'NO')"
+echo "  DATAHUB_SQL_SETUP_ENABLED: ${DATAHUB_SQL_SETUP_ENABLED:-NOT SET}"
 
 # Function to setup certificates
 setup_certificates() {

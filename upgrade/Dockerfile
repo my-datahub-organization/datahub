@@ -23,7 +23,7 @@ ENV SKIP_POSTGRES_CHECK=true
 
 # PostgreSQL Configuration
 ENV EBEAN_DATASOURCE_DRIVER=org.postgresql.Driver
-ENV SQL_SETUP_ENABLED=true
+ENV DATAHUB_SQL_SETUP_ENABLED=true
 
 # Authentication Configuration - MUST be provided via environment variables from .env
 # Kafka Configuration - Certificate-based authentication (mTLS)
